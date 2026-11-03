@@ -9,9 +9,12 @@
                                                    └───────────────────────────────┘
 ```
 
-Extensions can't start programs, and yt-dlp needs Python, ffmpeg and sometimes a JavaScript runtime. So the
+Extensions can't start programs, and yt-dlp needs Python, ffmpeg and, for YouTube, a JavaScript runtime. So the
 extension is only the interface, and the helper runs yt-dlp on the user's computer. That's the same design as the
 Android app, where yt-dlp runs on the phone. There is no server.
+
+The helper ships with everything it runs, in a `vendor/` folder next to it: yt-dlp, ffmpeg and ffprobe, and
+QuickJS (`qjs`), the JavaScript runtime yt-dlp uses for YouTube. Users install nothing else.
 
 ## The extension
 
@@ -46,7 +49,8 @@ stdin/stdout. Run by hand it takes `--install`, `--uninstall` and `--version`.
 | `engine.rs` | finds yt-dlp, ffmpeg and deno; arguments every run shares; link checks; readable errors |
 | `inspect.rs` | `yt-dlp -J`, reduced to what the quality picker shows |
 | `download.rs` | runs a download, reports progress, cancels, opens the folder |
-| `install.rs` | writes the host manifests that tell each browser where the helper is |
+| `install.rs` | writes the host manifests (and on Windows, registry keys) that tell each browser where the helper is |
+| `platform.rs` | what differs between macOS, Linux and Windows: program names, stopping processes, showing a file |
 
 Things it does deliberately:
 
@@ -57,11 +61,20 @@ Things it does deliberately:
   that into one number that only moves forward, weighted by size when yt-dlp knows the total.
 - **Partial files** go to `<cache>/ClipSave/partial/<job id>`. A failed or interrupted job keeps them so a retry
   resumes. Cancelling deletes them, and leftovers older than seven days are cleared on start.
-- **Cancelling** stops yt-dlp's whole process group, so ffmpeg stops too. When the browser closes the pipe,
-  every running job stops.
+- **Cancelling** stops yt-dlp and everything it started, so ffmpeg stops too: a process group signal on macOS
+  and Linux, `taskkill /T` on Windows. When the browser closes the pipe, every running job stops. On Windows,
+  nothing the helper starts opens a console window.
 - **Showing a file** works only for paths inside the ClipSave folders.
-- **Finding tools:** a browser started from the Dock passes a minimal `PATH`, so the helper also looks in
-  `/opt/homebrew/bin`, `/usr/local/bin` and next to itself (`vendor/`).
+- **Finding tools:** it looks in its own `vendor/` folder first. A browser started from the Dock passes a
+  minimal `PATH`, so it also looks in `/opt/homebrew/bin` and `/usr/local/bin`. It prefers the bundled QuickJS,
+  and uses Deno if that's all it finds.
+
+## Setup without a restart
+
+When the helper is missing, the popup shows the install command for the user's system
+(`runtime.getPlatformInfo()`, `src/lib/install.ts`) and asks the helper for a `hello` every two seconds.
+Browsers read the host registration each time they connect, so the first `hello` after the installer finishes
+succeeds, and the popup carries on reading the current page.
 
 ## Messages
 
@@ -83,7 +96,9 @@ The helper turns it into the same yt-dlp format selectors the Android app uses. 
 ## Registration
 
 Browsers only start a native host they find a manifest for. `clipsave-helper --install` writes
-`link.clipsave.helper.json` into each browser's per-user folder:
+`link.clipsave.helper.json` into each browser's per-user folder on macOS and Linux. On Windows it writes the
+manifests next to the helper and points a registry key under `HKEY_CURRENT_USER` at them for each browser, so no
+administrator rights are needed.
 
 - **Chromium browsers** allow the extension by ID (`allowed_origins`). The ID of unpacked builds comes from the
   `key` in `wxt.config.ts`. A Chrome Web Store listing gets its own ID, which has to be added to

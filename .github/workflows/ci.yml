@@ -57,9 +57,11 @@ jobs:
         include:
           - { name: macOS, os: macos-latest }
           - { name: Linux, os: ubuntu-22.04 }
+          - { name: Windows, os: windows-latest }
     defaults:
       run:
         working-directory: helper
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -81,9 +83,18 @@ jobs:
         run: cargo test
 
   browser:
-    name: Browser tests
-    runs-on: macos-latest
+    name: Browser tests (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS, os: macos-latest }
+          - { name: Windows, os: windows-latest }
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -98,9 +109,9 @@ jobs:
         with:
           workspaces: helper
 
-      - name: Install ffmpeg, Chrome and Firefox
+      - name: Make sure Chrome and Firefox are installed
+        if: runner.os == 'macOS'
         run: |
-          brew install ffmpeg
           test -d "/Applications/Google Chrome.app" || brew install --cask google-chrome
           test -d "/Applications/Firefox.app" || brew install --cask firefox
 
@@ -109,7 +120,8 @@ jobs:
       - name: Build the extension
         run: npm run build
 
-      - name: Build the helper and fetch yt-dlp
+      # fetch-engine.sh brings yt-dlp, ffmpeg and QuickJS, the same as a release, so nothing else is installed.
+      - name: Build the helper and fetch its tools
         run: |
           cargo build --release --manifest-path helper/Cargo.toml
           sh helper/fetch-engine.sh
@@ -125,6 +137,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-test-screenshots
+          name: browser-test-screenshots-${{ matrix.name }}
           path: e2e/screenshots/
           if-no-files-found: ignore

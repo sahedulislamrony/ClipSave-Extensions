@@ -6,17 +6,35 @@ import { writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { join } from 'node:path';
 import {
-  FIREFOX_ID, ROOT, Results, SCREENSHOTS, cleanUp, helperRunning, savedFiles, scratch, sleep, startServer,
-  writeHostManifest,
+  FIREFOX_ID, FIREFOX_REGISTRY_KEY, IS_WINDOWS, ROOT, Results, SCREENSHOTS, cleanUp, helperRunning, registryEntry,
+  removeSavedFiles, savedFiles, scratch, sleep, startServer, writeHostManifest,
 } from './lib.mjs';
 
 const FIREFOX =
   process.env.FIREFOX_PATH ??
-  (process.platform === 'darwin' ? '/Applications/Firefox.app/Contents/MacOS/firefox' : 'firefox');
+  {
+    darwin: '/Applications/Firefox.app/Contents/MacOS/firefox',
+    win32: 'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
+  }[process.platform] ??
+  'firefox';
 const UUID = '3f2b1c9e-7d44-4a57-9b1e-2c6d8f0a1b23';
 const PORT = 2829;
 const results = new Results();
 const server = await startServer();
+const restore = [];
+
+/** Where Firefox looks for host manifests for this home folder. On Windows it reads the registry instead. */
+function hostFolder(home) {
+  if (IS_WINDOWS) return join(home, 'NativeMessagingHosts');
+  return process.platform === 'darwin'
+    ? join(home, 'Library/Application Support/Mozilla/NativeMessagingHosts')
+    : join(home, '.mozilla/native-messaging-hosts');
+}
+
+function registerHelper(home) {
+  const file = writeHostManifest(hostFolder(home), { allowed_extensions: [FIREFOX_ID] });
+  restore.push(registryEntry(FIREFOX_REGISTRY_KEY, file));
+}
 
 class Marionette {
   id = 0;
@@ -92,13 +110,8 @@ class Marionette {
 async function launch({ withHelper }) {
   const home = scratch('firefox-home');
   const profile = scratch('firefox-profile');
-  if (withHelper) {
-    const dir =
-      process.platform === 'darwin'
-        ? join(home, 'Library/Application Support/Mozilla/NativeMessagingHosts')
-        : join(home, '.mozilla/native-messaging-hosts');
-    writeHostManifest(dir, { allowed_extensions: [FIREFOX_ID] });
-  }
+  if (withHelper) registerHelper(home);
+  else restore.push(registryEntry(FIREFOX_REGISTRY_KEY, null));
   writeFileSync(
     join(profile, 'user.js'),
     [
@@ -184,8 +197,8 @@ try {
     await client.until(`return !!document.querySelector('.item.done')`, 60000);
     await client.screenshot('firefox-done.png');
     const { video } = savedFiles(home);
-    if (video.length !== 1) throw new Error(`saved: ${video.join(', ') || 'nothing'}`);
-    return video[0];
+    if (!video.some((f) => f.endsWith('.mp4'))) throw new Error(`saved: ${video.join(', ') || 'nothing'}`);
+    return video.join(', ');
   });
 
   await results.step('saves MP3 audio', async () => {
@@ -204,17 +217,24 @@ try {
 
   await results.step('helper exits after 30 idle seconds', async () => {
     await sleep(35000);
-    if (helperRunning(`clipsave-helper.*${home}`)) throw new Error('still running');
+    if (helperRunning(hostFolder(home))) throw new Error('still running');
   });
   await close();
+  removeSavedFiles(home);
 
   const missing = await launch({ withHelper: false });
-  await results.step('shows the install screen when the helper is missing', async () => {
+  await results.step('shows the install command when the helper is missing', async () => {
     await missing.client.until(`return document.querySelector('#save-body').innerText.includes('One more step')`, 15000);
+    return missing.client.run(`return document.querySelector('.command').innerText`);
+  });
+  await results.step('carries on by itself once the helper is installed', async () => {
+    registerHelper(missing.home);
+    await missing.client.until(`return document.querySelector('#save-body').innerText.includes('Open a page')`, 15000);
   });
   await missing.close();
 } finally {
   server.close();
+  for (const undo of restore.reverse()) undo();
   cleanUp();
 }
 

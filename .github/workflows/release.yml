@@ -1,12 +1,10 @@
 name: Release
 
-# Runs when the release pull request (dev → main) is merged. Runs every check again, then publishes a GitHub
-# Release for the version in package.json with the extension zips, the helper for macOS and Linux, and
-# install.sh. It publishes nothing when:
-#   - the version is already released (for example a docs-only merge), or
-#   - the push to main didn't come from a merged pull request (main only changes that way once the
-#     rulesets are on; this keeps the first push of the repository from publishing a release).
-# Run it by hand from Actions → Release → Run workflow to publish without a pull request.
+# release.json decides releases. When a merge into main changes it, and the version it states is newer than
+# the latest release, this runs every check again and, if they all pass, publishes a GitHub Release with the
+# extension zips, the helper for macOS, Linux and Windows, and the installers. Merges that don't change release.json don't start it, and a
+# version that isn't newer publishes nothing. After a failed run, start it again from
+# Actions → Release → Run workflow on main; the same rules apply.
 #
 # Optional repository secrets (Settings → Secrets and variables → Actions):
 #   AMO_JWT_ISSUER, AMO_JWT_SECRET   addons.mozilla.org API keys. When set, the release also has a signed
@@ -14,6 +12,7 @@ name: Release
 on:
   push:
     branches: [main]
+    paths: [release.json]
   workflow_dispatch:
 
 concurrency:
@@ -27,9 +26,6 @@ jobs:
   plan:
     name: Plan
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
     outputs:
       version: ${{ steps.plan.outputs.version }}
       publish: ${{ steps.plan.outputs.publish }}
@@ -38,29 +34,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Decide whether to publish
+      - name: Read release.json
         id: plan
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          EVENT: ${{ github.event_name }}
         run: |
           VERSION=$(node scripts/version.mjs) || exit 1
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
-            echo "v$VERSION is already released, so nothing was published. Bump the version to release a new one." >> "$GITHUB_STEP_SUMMARY"
+          if NEWER=$(node scripts/version.mjs --newer 2>&1); then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "Releasing: $NEWER." >> "$GITHUB_STEP_SUMMARY"
+          else
             echo "publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "Nothing was published: $NEWER" >> "$GITHUB_STEP_SUMMARY"
           fi
-          if [ "$EVENT" = "push" ]; then
-            MERGED=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
-              --jq '[.[] | select(.merged_at != null and .base.ref == "main")] | length')
-            if [ "$MERGED" = "0" ]; then
-              echo "This push to main didn't come from a merged pull request, so nothing was published." >> "$GITHUB_STEP_SUMMARY"
-              echo "publish=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-          echo "publish=true" >> "$GITHUB_OUTPUT"
 
   checks:
     name: Checks
@@ -74,7 +59,7 @@ jobs:
     name: Helper for macOS
     needs: [plan, checks]
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -82,25 +67,20 @@ jobs:
         with:
           targets: aarch64-apple-darwin, x86_64-apple-darwin
 
-      - name: Build one binary for Apple silicon and Intel
-        working-directory: helper
+      # One archive per kind of Mac, each with that chip's ffmpeg and QuickJS.
+      - name: Build and package for Apple silicon and Intel
         run: |
-          cargo build --release --target aarch64-apple-darwin
-          cargo build --release --target x86_64-apple-darwin
-          lipo -create -output clipsave-helper \
-            target/aarch64-apple-darwin/release/clipsave-helper \
-            target/x86_64-apple-darwin/release/clipsave-helper
-          lipo -info clipsave-helper
-
-      - name: Package with yt-dlp
-        run: |
-          sh helper/fetch-engine.sh
-          sh scripts/package-helper.sh macos helper/clipsave-helper
+          for arch in arm64 x86_64; do
+            [ $arch = arm64 ] && target=aarch64-apple-darwin || target=x86_64-apple-darwin
+            cargo build --release --manifest-path helper/Cargo.toml --target $target
+            sh helper/fetch-engine.sh $arch
+            sh scripts/package-helper.sh macos-$arch helper/target/$target/release/clipsave-helper
+          done
 
       - uses: actions/upload-artifact@v4
         with:
           name: helper-macos
-          path: dist/clipsave-helper-macos.tar.gz
+          path: dist/clipsave-helper-macos-*.tar.gz
 
   helper-linux:
     name: Helper for Linux
@@ -124,9 +104,33 @@ jobs:
           name: helper-linux
           path: dist/clipsave-helper-linux-x86_64.tar.gz
 
+  helper-windows:
+    name: Helper for Windows
+    needs: [plan, checks]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build and package with its tools
+        run: |
+          cargo build --release --manifest-path helper/Cargo.toml
+          sh helper/fetch-engine.sh
+          sh scripts/package-helper.sh windows-x86_64 helper/target/release/clipsave-helper.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: helper-windows
+          path: dist/clipsave-helper-windows-x86_64.zip
+
   publish:
     name: Publish
-    needs: [plan, checks, helper-macos, helper-linux]
+    needs: [plan, checks, helper-macos, helper-linux, helper-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -164,11 +168,11 @@ jobs:
             --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
           mv signed/*.xpi "dist/ClipSave-$VERSION-firefox.xpi"
 
-      - name: Add the installer and checksums
+      - name: Add the installers and checksums
         run: |
-          cp scripts/install.sh dist/install.sh
+          cp scripts/install.sh scripts/install.ps1 dist/
           cd dist
-          sha256sum ClipSave-* clipsave-helper-* install.sh > SHA256SUMS.txt
+          sha256sum ClipSave-* clipsave-helper-* install.sh install.ps1 > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Write release notes
@@ -183,13 +187,13 @@ jobs:
 
           ---
 
-          **Install:** follow [docs/install.md](https://github.com/$GITHUB_REPOSITORY/blob/v$VERSION/docs/install.md). In short, install the helper with
+          **Install:** add the extension, then click its button: it shows the one command that installs the helper.
+          Full guide: [docs/install.md](https://github.com/$GITHUB_REPOSITORY/blob/v$VERSION/docs/install.md).
 
-          \`\`\`
-          curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/install.sh | sh
-          \`\`\`
+          - macOS, Linux: \`curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/latest/download/install.sh | sh\`
+          - Windows (PowerShell): \`irm https://github.com/$GITHUB_REPOSITORY/releases/latest/download/install.ps1 | iex\`
 
-          then add the extension: \`ClipSave-$VERSION-chrome-unpacked.zip\` for Chrome, Edge and Brave, or the Firefox add-on.
+          Extension: \`ClipSave-$VERSION-chrome-unpacked.zip\` for Chrome, Edge and Brave, or the Firefox add-on.
           Verify any file with \`SHA256SUMS.txt\`.
           EOF
 
@@ -199,5 +203,5 @@ jobs:
         run: |
           PRERELEASE=""
           case "$VERSION" in *-*) PRERELEASE="--prerelease" ;; esac
-          gh release create "v$VERSION" dist/ClipSave-* dist/clipsave-helper-* dist/install.sh dist/SHA256SUMS.txt \
+          gh release create "v$VERSION" dist/ClipSave-* dist/clipsave-helper-* dist/install.sh dist/install.ps1 dist/SHA256SUMS.txt \
             --target "$GITHUB_SHA" --title "ClipSave for browsers $VERSION" --notes-file RELEASE_NOTES.md $PRERELEASE
