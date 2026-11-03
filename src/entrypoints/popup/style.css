@@ -208,6 +208,26 @@ main {
   font-weight: 700;
 }
 
+.notice a:not(.primary) {
+  color: var(--on-primary-soft);
+}
+
+.command {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: 12px/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.waiting {
+  margin-top: 2px;
+}
+
 .media {
   display: flex;
   gap: 10px;

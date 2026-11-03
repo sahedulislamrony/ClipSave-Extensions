@@ -20,7 +20,7 @@ Nothing about you or what you save is sent to the ClipSave project.
   [yt-dlp](https://github.com/yt-dlp/yt-dlp) connects to that site directly, the same way your browser does when
   you watch it. That site's own privacy policy applies.
 * **The video's thumbnail**, shown in the popup, loads from the website it belongs to.
-* **GitHub**, only when you run `install.sh` to install or update the helper.
+* **GitHub**, only when you run the installer to install or update the helper.
 
 ## Permissions the extension asks for
 

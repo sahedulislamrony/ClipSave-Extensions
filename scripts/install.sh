@@ -1,5 +1,6 @@
 #!/bin/sh
 # Installs or updates the ClipSave Helper for the current user, and registers it with the browsers.
+# Everything it needs (yt-dlp, ffmpeg, a JavaScript runtime) comes with it.
 #
 #   curl -fsSL https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest/download/install.sh | sh
 #
@@ -13,8 +14,12 @@ REPO=sahedulislamrony/ClipSave-Extensions
 BASE=${CLIPSAVE_RELEASE_URL:-https://github.com/$REPO/releases/latest/download}
 
 case "$(uname -s)-$(uname -m)" in
-  Darwin-*)
-    asset=clipsave-helper-macos.tar.gz
+  Darwin-arm64)
+    asset=clipsave-helper-macos-arm64.tar.gz
+    dest="$HOME/Library/Application Support/ClipSave"
+    ;;
+  Darwin-x86_64)
+    asset=clipsave-helper-macos-x86_64.tar.gz
     dest="$HOME/Library/Application Support/ClipSave"
     ;;
   Linux-x86_64)
@@ -22,7 +27,7 @@ case "$(uname -s)-$(uname -m)" in
     dest="${XDG_DATA_HOME:-$HOME/.local/share}/clipsave"
     ;;
   *)
-    echo "The ClipSave Helper supports macOS and 64-bit Linux so far." >&2
+    echo "The ClipSave Helper doesn't run on $(uname -s) $(uname -m) yet." >&2
     exit 1
     ;;
 esac
@@ -47,8 +52,8 @@ fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-echo "Downloading the ClipSave Helper..."
-curl -fsSL -o "$work/$asset" "$BASE/$asset"
+echo "Downloading the ClipSave Helper (about 110 MB)..."
+curl -fSL --progress-bar -o "$work/$asset" "$BASE/$asset"
 curl -fsSL -o "$work/SHA256SUMS.txt" "$BASE/SHA256SUMS.txt"
 
 expected=$(awk -v name="$asset" '$2 == name { print $1 }' "$work/SHA256SUMS.txt")
@@ -62,28 +67,7 @@ mkdir -p "$dest"
 rm -rf "$dest/helper"
 mv "$work/helper" "$dest/helper"
 "$helper" --install
-echo "Installed $("$helper" --version) in $dest/helper"
-
-# The helper looks in the same places when a browser starts it.
-have() {
-  for dir in /opt/homebrew/bin /usr/local/bin /usr/bin; do
-    [ -x "$dir/$1" ] && return 0
-  done
-  command -v "$1" >/dev/null 2>&1
-}
-missing=""
-have ffmpeg || missing="$missing ffmpeg"
-have deno || missing="$missing deno"
-if [ -n "$missing" ]; then
-  echo
-  echo "Also install:$missing"
-  echo "  ffmpeg joins video and audio and makes MP3s. deno is needed for YouTube."
-  if [ "$(uname -s)" = Darwin ]; then
-    echo "  With Homebrew: brew install$missing"
-  else
-    echo "  For example: sudo apt install ffmpeg, and see https://deno.com for deno"
-  fi
-fi
-
 echo
-echo "Done. Restart your browser if ClipSave still asks for the helper."
+version=$("$helper" --version)
+echo "Installed $(printf '%s\n' "$version" | head -1) in $dest/helper"
+echo "Done. Go back to your browser: ClipSave carries on by itself."

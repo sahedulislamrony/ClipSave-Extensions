@@ -1,5 +1,7 @@
 //! Runs the built helper the way a browser does, over stdin and stdout, with `tests/stub/yt-dlp`
-//! standing in for yt-dlp and a throwaway home folder.
+//! standing in for yt-dlp and a throwaway home folder. The stub is a shell script, so these run on macOS
+//! and Linux; on Windows the browser tests cover the same ground.
+#![cfg(unix)]
 
 use serde_json::{json, Value};
 use std::io::{Read, Write};

@@ -1,16 +1,15 @@
 //! Finds yt-dlp and its tools, and builds the arguments every run shares.
 
+use crate::platform::{exe, hide_window, SYSTEM_DIRS};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Browsers started from the Dock or Finder pass a minimal PATH, so look in the usual places too.
-const SYSTEM_DIRS: [&str; 3] = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"];
-
 pub struct Engine {
     pub yt_dlp: Option<PathBuf>,
     ffmpeg: Option<PathBuf>,
-    deno: Option<PathBuf>,
+    /// The JavaScript runtime yt-dlp needs for YouTube, as yt-dlp names it, and where it is.
+    js_runtime: Option<(&'static str, PathBuf)>,
 }
 
 impl Engine {
@@ -33,7 +32,7 @@ impl Engine {
         dirs.extend(SYSTEM_DIRS.iter().map(PathBuf::from));
 
         // Folders are tried in order, and within a folder the names in order.
-        let find = |names: &[&str]| {
+        let find = |names: &[String]| {
             dirs.iter().find_map(|dir| {
                 names
                     .iter()
@@ -41,11 +40,15 @@ impl Engine {
                     .find(|path| path.is_file())
             })
         };
+        // The bundled QuickJS comes first; a Deno the user installed works too.
+        let js_runtime = find(&[exe("qjs")])
+            .map(|path| ("quickjs", path))
+            .or_else(|| find(&[exe("deno")]).map(|path| ("deno", path)));
         Engine {
             // The unpacked macOS release first: see fetch-engine.sh for why it has to be that one.
-            yt_dlp: find(&["yt-dlp_macos/yt-dlp_macos", "yt-dlp"]),
-            ffmpeg: find(&["ffmpeg"]),
-            deno: find(&["deno"]),
+            yt_dlp: find(&["yt-dlp_macos/yt-dlp_macos".to_string(), exe("yt-dlp")]),
+            ffmpeg: find(&[exe("ffmpeg")]),
+            js_runtime,
         }
     }
 
@@ -53,8 +56,27 @@ impl Engine {
         self.ffmpeg.is_some()
     }
 
+    /// One line per tool, for `--version` and bug reports.
+    pub fn describe(&self) -> String {
+        let show = |path: Option<&PathBuf>| {
+            path.map_or("not found".to_string(), |p| p.display().to_string())
+        };
+        let js = self
+            .js_runtime
+            .as_ref()
+            .map(|(name, path)| format!("{name} at {}", path.display()));
+        format!(
+            "  yt-dlp: {} ({})\n  ffmpeg: {}\n  JavaScript: {}",
+            show(self.yt_dlp.as_ref()),
+            self.yt_dlp_version()
+                .unwrap_or_else(|| "no version".to_string()),
+            show(self.ffmpeg.as_ref()),
+            js.unwrap_or_else(|| "not found (YouTube won't work)".to_string()),
+        )
+    }
+
     pub fn yt_dlp_version(&self) -> Option<String> {
-        let output = Command::new(self.yt_dlp.as_ref()?)
+        let output = hide_window(&mut Command::new(self.yt_dlp.as_ref()?))
             .arg("--version")
             .output()
             .ok()?;
@@ -67,6 +89,7 @@ impl Engine {
     /// Starts a yt-dlp command with the options every run needs.
     pub fn command(&self) -> Option<Command> {
         let mut command = Command::new(self.yt_dlp.as_ref()?);
+        hide_window(&mut command);
         // A config file on this computer shouldn't change what the extension asked for.
         command.args([
             "--ignore-config",
@@ -78,10 +101,10 @@ impl Engine {
         if let Some(ffmpeg) = &self.ffmpeg {
             command.arg("--ffmpeg-location").arg(ffmpeg);
         }
-        if let Some(deno) = &self.deno {
+        if let Some((name, path)) = &self.js_runtime {
             command
                 .arg("--js-runtimes")
-                .arg(format!("deno:{}", deno.display()));
+                .arg(format!("{name}:{}", path.display()));
         }
         Some(command)
     }

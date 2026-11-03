@@ -51,7 +51,13 @@
             "context": "Helper (Linux)"
           },
           {
-            "context": "Browser tests"
+            "context": "Helper (Windows)"
+          },
+          {
+            "context": "Browser tests (macOS)"
+          },
+          {
+            "context": "Browser tests (Windows)"
           },
           {
             "context": "Branch rules"

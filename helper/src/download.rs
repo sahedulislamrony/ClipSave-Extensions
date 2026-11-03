@@ -1,12 +1,13 @@
 //! Runs one yt-dlp download and reports on it. Mirrors `DownloadWorker` in the Android app.
 
 use crate::engine::{friendly_error, Engine};
+use crate::platform;
 use crate::protocol::{Outbox, Quality};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
-use std::os::unix::process::CommandExt;
+
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,7 +26,7 @@ const POST: &str = "[cs-post]";
 const PATH: &str = "[cs-path]";
 
 struct Job {
-    pid: i32,
+    pid: u32,
     cancelled: AtomicBool,
 }
 
@@ -39,7 +40,7 @@ impl Jobs {
         match self.0.lock().unwrap().get(id) {
             Some(job) => {
                 job.cancelled.store(true, Ordering::SeqCst);
-                terminate(job.pid);
+                platform::terminate(job.pid);
             }
             None => {
                 if is_valid_id(id) {
@@ -51,15 +52,8 @@ impl Jobs {
 
     pub fn stop_all(&self) {
         for job in self.0.lock().unwrap().values() {
-            terminate(job.pid);
+            platform::terminate(job.pid);
         }
-    }
-}
-
-/// yt-dlp starts ffmpeg, so the whole process group has to go.
-fn terminate(pid: i32) {
-    unsafe {
-        libc::kill(-pid, libc::SIGTERM);
     }
 }
 
@@ -190,14 +184,14 @@ fn run(
         .args(["--", url])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .process_group(0);
+        .stderr(Stdio::piped());
+    platform::own_group(&mut command);
 
     let mut child = command
         .spawn()
         .map_err(|e| format!("Could not start yt-dlp: {e}"))?;
     let job = Arc::new(Job {
-        pid: child.id() as i32,
+        pid: child.id(),
         cancelled: AtomicBool::new(false),
     });
     jobs.0.lock().unwrap().insert(id.to_string(), job.clone());
@@ -348,16 +342,7 @@ pub fn reveal(path: &str) -> Result<(), String> {
     if !allowed {
         return Err("This file isn't in a ClipSave folder.".to_string());
     }
-    let mut command = if cfg!(target_os = "macos") {
-        let mut open = std::process::Command::new("open");
-        open.arg("-R").arg(&path);
-        open
-    } else {
-        let mut open = std::process::Command::new("xdg-open");
-        open.arg(path.parent().unwrap_or(&path));
-        open
-    };
-    command.status().map(|_| ()).map_err(|e| e.to_string())
+    platform::reveal(&path).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

@@ -1,7 +1,9 @@
 name: Release readiness
 
-# Extra checks on the pull request that releases dev to main. All other checks (CI, CodeQL, branch rules)
-# run on it as well.
+# Runs on every pull request into main, alongside CI, CodeQL and the branch rules. A pull request that changes
+# release.json will publish that version when merged, so it must state a version newer than the latest
+# release, have a changelog section for it, and package cleanly. One that doesn't change release.json
+# releases nothing, and this check just says so.
 on:
   pull_request:
     branches: [main]
@@ -28,33 +30,36 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Check version and changelog
+      - name: Check release.json
+        id: release
+        env:
+          BASE: ${{ github.base_ref }}
         run: |
           VERSION=$(node scripts/version.mjs) || exit 1
-          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
-            echo "::error::v$VERSION is already released. Bump it with: node scripts/version.mjs <new version>"
-            exit 1
+          if git diff --quiet "origin/$BASE" HEAD -- release.json; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "### No release: release.json is unchanged, so merging publishes nothing." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
-          PREV=$(git tag --list 'v*' --sort=-v:refname | head -1)
-          if [ -n "$PREV" ]; then
-            HIGHEST=$(printf '%s\n%s\n' "${PREV#v}" "$VERSION" | sort -V | tail -1)
-            if [ "$HIGHEST" != "$VERSION" ]; then
-              echo "::error::Version $VERSION must be higher than the last release, $PREV."
-              exit 1
-            fi
+          if ! NEWER=$(node scripts/version.mjs --newer 2>&1); then
+            echo "::error::$NEWER"
+            exit 1
           fi
           if ! grep -qF "## [$VERSION]" CHANGELOG.md; then
             echo "::error::CHANGELOG.md has no '## [$VERSION]' section. Move the Unreleased notes under it."
             exit 1
           fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
           {
-            echo "### Release readiness"
-            echo "- Version **$VERSION**, previous release: ${PREV:-none}"
-            echo "- Changelog entry found"
+            echo "### Merging releases **$VERSION**"
+            echo "- $NEWER"
+            echo "- Changelog section found"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - run: npm ci
+      - if: steps.release.outputs.release == 'true'
+        run: npm ci
 
       # The same packaging the release does, so a broken zip shows up before the merge.
       - name: Package the extension
+        if: steps.release.outputs.release == 'true'
         run: sh scripts/package-extension.sh

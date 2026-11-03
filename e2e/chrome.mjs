@@ -3,22 +3,36 @@
 import { join } from 'node:path';
 import puppeteer from 'puppeteer-core';
 import {
-  CHROME_ID, ROOT, Results, SCREENSHOTS, cleanUp, helperRunning, savedFiles, scratch, sleep,
-  startServer, writeHostManifest,
+  CHROME_ID, CHROME_REGISTRY_KEY, IS_WINDOWS, ROOT, Results, SCREENSHOTS, cleanUp, helperRunning, registryEntry,
+  removeSavedFiles, savedFiles, scratch, sleep, startServer, writeHostManifest,
 } from './lib.mjs';
 
 const CHROME =
   process.env.CHROME_PATH ??
-  (process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : '/usr/bin/google-chrome');
+  {
+    darwin: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    win32: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  }[process.platform] ??
+  '/usr/bin/google-chrome';
 const POPUP = `chrome-extension://${CHROME_ID}/popup.html`;
 const results = new Results();
 const server = await startServer();
+const restore = [];
+
+/**
+ * Registers the helper for one test profile. Chrome also looks for host manifests in its profile folder,
+ * which keeps the test away from the real ones; on Windows it only reads the registry.
+ */
+function registerHelper(profile) {
+  const file = writeHostManifest(join(profile, 'NativeMessagingHosts'), { allowed_origins: [`chrome-extension://${CHROME_ID}/`] });
+  restore.push(registryEntry(CHROME_REGISTRY_KEY, file));
+}
 
 async function launch({ withHelper }) {
   const profile = scratch('chrome-profile');
   const home = scratch('chrome-home');
-  // Chrome also looks for host manifests in its profile folder, which keeps the test away from the real ones.
-  if (withHelper) writeHostManifest(join(profile, 'NativeMessagingHosts'), { allowed_origins: [`chrome-extension://${CHROME_ID}/`] });
+  if (withHelper) registerHelper(profile);
+  else restore.push(registryEntry(CHROME_REGISTRY_KEY, null));
   const browser = await puppeteer.launch({
     executablePath: CHROME,
     headless: true,
@@ -28,7 +42,9 @@ async function launch({ withHelper }) {
     env: { ...process.env, HOME: home },
     args: process.env.CI ? ['--no-sandbox'] : [],
   });
-  return { browser, home };
+  // The extension loads after launch returns; opening the popup before that is refused (ERR_BLOCKED_BY_CLIENT).
+  const target = await browser.waitForTarget((t) => t.type() === 'service_worker' && t.url().includes(CHROME_ID), { timeout: 30000 });
+  return { browser, home, profile, worker: await target.worker() };
 }
 
 async function openPopup(browser) {
@@ -51,9 +67,8 @@ const waitFor = (page, fn, timeout, ...args) => page.waitForFunction(fn, { timeo
 const storedCount = (worker) => worker.evaluate(async () => (await chrome.storage.local.get('downloads')).downloads?.length ?? 0);
 
 try {
-  const { browser, home } = await launch({ withHelper: true });
+  const { browser, home, worker } = await launch({ withHelper: true });
   const { page, errors } = await openPopup(browser);
-  const worker = await (await browser.waitForTarget((t) => t.type() === 'service_worker' && t.url().includes(CHROME_ID))).worker();
 
   await results.step('popup connects to the helper', () =>
     waitFor(page, () => document.querySelector('#save-body')?.innerText.includes('Open a page'), 20000));
@@ -78,8 +93,8 @@ try {
     await page.waitForSelector('.item.done', { timeout: 60000 });
     await page.screenshot({ path: join(SCREENSHOTS, 'chrome-done.png') });
     const { video } = savedFiles(home);
-    if (video.length !== 1) throw new Error(`saved: ${video.join(', ') || 'nothing'}`);
-    return video[0];
+    if (!video.some((f) => f.endsWith('.mp4'))) throw new Error(`saved: ${video.join(', ') || 'nothing'}`);
+    return video.join(', ');
   });
 
   await results.step('right-click "Save audio" saves an MP3', async () => {
@@ -126,15 +141,26 @@ try {
   results.check('no errors in the popup console', unexpected.length === 0, unexpected.join(' / '));
   await browser.close();
 
+  removeSavedFiles(home);
+
   const missing = await launch({ withHelper: false });
   const { page: lonely } = await openPopup(missing.browser);
-  await results.step('shows the install screen when the helper is missing', async () => {
+  await results.step('shows the install command when the helper is missing', async () => {
     await waitFor(lonely, () => document.querySelector('#save-body').innerText.includes('One more step'), 10000);
     await lonely.screenshot({ path: join(SCREENSHOTS, 'chrome-helper-missing.png') });
+    const command = await text(lonely, '.command');
+    if (!command.includes(IS_WINDOWS ? 'install.ps1' : 'install.sh')) throw new Error(command);
+    return command;
+  });
+
+  await results.step('carries on by itself once the helper is installed', async () => {
+    registerHelper(missing.profile);
+    await waitFor(lonely, () => document.querySelector('#save-body').innerText.includes('Open a page'), 15000);
   });
   await missing.browser.close();
 } finally {
   server.close();
+  for (const undo of restore.reverse()) undo();
   cleanUp();
 }
 

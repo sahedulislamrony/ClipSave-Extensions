@@ -1,12 +1,14 @@
 // Shared pieces of the browser tests: a local video server, throwaway folders, and results.
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { createReadStream, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+export const IS_WINDOWS = process.platform === 'win32';
 export const ROOT = resolve(import.meta.dirname, '..');
-export const HELPER = process.env.CLIPSAVE_HELPER ?? join(ROOT, 'helper/target/release/clipsave-helper');
+export const HELPER =
+  process.env.CLIPSAVE_HELPER ?? join(ROOT, 'helper/target/release', IS_WINDOWS ? 'clipsave-helper.exe' : 'clipsave-helper');
 export const SCREENSHOTS = join(ROOT, 'e2e/screenshots');
 export const HOST_NAME = 'link.clipsave.helper';
 export const CHROME_ID = 'engejhilbedikenhabjndbpgpdhaedge';
@@ -74,11 +76,45 @@ export function cleanUp() {
 
 export function writeHostManifest(dir, allowed) {
   mkdirSync(dir, { recursive: true });
+  const file = join(dir, `${HOST_NAME}.json`);
   writeFileSync(
-    join(dir, `${HOST_NAME}.json`),
+    file,
     JSON.stringify({ name: HOST_NAME, description: 'ClipSave Helper (test)', path: HELPER, type: 'stdio', ...allowed }),
   );
+  return file;
 }
+
+/**
+ * Windows browsers find native hosts only through the registry, under HKEY_CURRENT_USER\<key>. Points that
+ * entry at `file` (or removes it when `file` is null) and returns a function that puts back what was there,
+ * so a developer's own installed helper survives a test run. Does nothing elsewhere.
+ */
+export function registryEntry(key, file) {
+  if (!IS_WINDOWS) return () => {};
+  const path = `HKCU\\${key}\\${HOST_NAME}`;
+  const reg = (...args) => execFileSync('reg', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+  let previous = null;
+  try {
+    previous = /REG_SZ\s+(.+)/.exec(reg('query', path, '/ve'))?.[1]?.trim() ?? null;
+  } catch {
+    // No entry yet.
+  }
+  const set = (value) => {
+    if (value) reg('add', path, '/ve', '/t', 'REG_SZ', '/d', value, '/f');
+    else {
+      try {
+        reg('delete', path, '/f');
+      } catch {
+        // Already gone.
+      }
+    }
+  };
+  set(file);
+  return () => set(previous);
+}
+
+export const CHROME_REGISTRY_KEY = 'Software\\Google\\Chrome\\NativeMessagingHosts';
+export const FIREFOX_REGISTRY_KEY = 'Software\\Mozilla\\NativeMessagingHosts';
 
 export function list(dir) {
   try {
@@ -88,13 +124,33 @@ export function list(dir) {
   }
 }
 
-/** The folders the helper saves into, for a given home folder. Matches helper/src/download.rs. */
-export function savedFiles(home) {
+/**
+ * The folders the helper saves into, for a given home folder. Matches helper/src/download.rs. Windows asks the
+ * system for the user's Videos and Music folders rather than reading HOME, so there the real ones are used.
+ */
+function saveFolders(home) {
+  if (IS_WINDOWS) return { video: [join(homedir(), 'Videos/ClipSave')], audio: [join(homedir(), 'Music/ClipSave')] };
   const linux = process.platform === 'linux';
   return {
-    video: list(join(home, linux ? 'Videos' : 'Movies', 'ClipSave')).concat(linux ? list(join(home, 'Movies/ClipSave')) : []),
-    audio: list(join(home, 'Music/ClipSave')),
+    video: linux ? [join(home, 'Videos/ClipSave'), join(home, 'Movies/ClipSave')] : [join(home, 'Movies/ClipSave')],
+    audio: [join(home, 'Music/ClipSave')],
   };
+}
+
+/** The test clip's files the helper saved: only those, so other files in the folders don't count. */
+export function savedFiles(home) {
+  const folders = saveFolders(home);
+  const clips = (dirs) => dirs.flatMap(list).filter((name) => name.startsWith('clip ['));
+  return { video: clips(folders.video), audio: clips(folders.audio) };
+}
+
+/** Removes the test clip's files from the real Videos and Music folders on Windows. */
+export function removeSavedFiles(home) {
+  if (!IS_WINDOWS) return;
+  const folders = saveFolders(home);
+  for (const dir of [...folders.video, ...folders.audio]) {
+    for (const name of list(dir).filter((n) => n.startsWith('clip ['))) rmSync(join(dir, name), { force: true });
+  }
 }
 
 export class Results {
@@ -126,11 +182,14 @@ export class Results {
 
 export const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-/** Whether a helper started by a browser is still running. */
+/** Whether a helper whose command line contains `match` is still running. */
 export function helperRunning(match) {
-  try {
-    return execSync(`pgrep -f ${JSON.stringify(match)}`).toString().trim() !== '';
-  } catch {
-    return false;
-  }
+  const lines = IS_WINDOWS
+    ? execFileSync('powershell', [
+        '-NoProfile',
+        '-Command',
+        "Get-CimInstance Win32_Process -Filter \"Name='clipsave-helper.exe'\" | ForEach-Object { $_.CommandLine }",
+      ]).toString()
+    : execFileSync('ps', ['-A', '-o', 'args=']).toString();
+  return lines.split('\n').some((line) => line.includes('clipsave-helper') && line.includes(match));
 }
