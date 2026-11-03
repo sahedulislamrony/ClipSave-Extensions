@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: A site stopped working (extractor error)
+    url: https://github.com/yt-dlp/yt-dlp/issues
+    about: ClipSave uses yt-dlp. Run the installer again to get the newest yt-dlp first; if it still fails, report it to yt-dlp.
+  - name: Security vulnerability
+    url: https://github.com/sahedulislamrony/ClipSave-Extensions/security/advisories/new
+    about: Please report security problems privately, not as a public issue.
+  - name: The Android app
+    url: https://github.com/sahedulislamrony/ClipSave/issues
+    about: Problems with the ClipSave Android app go to its own repository.

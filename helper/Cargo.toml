@@ -1,0 +1,17 @@
+[package]
+name = "clipsave-helper"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Lets the ClipSave browser extension run yt-dlp on this computer."
+
+[dependencies]
+dirs = "6"
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+lto = true
+strip = true
+opt-level = "s"

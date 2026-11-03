@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ClipSave</title>
+  </head>
+  <body>
+    <header class="top">
+      <img src="/icon/48.png" alt="" width="24" height="24" />
+      <span class="brand">ClipSave</span>
+      <div class="tabs" role="tablist">
+        <button id="tab-save" role="tab" aria-selected="true" aria-controls="panel-save">Save</button>
+        <button id="tab-downloads" role="tab" aria-selected="false" aria-controls="panel-downloads">
+          Downloads<span id="count" class="count" hidden></span>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section id="panel-save" role="tabpanel" aria-labelledby="tab-save">
+        <form id="link-form" class="link">
+          <input id="link" type="url" placeholder="Paste a video link" aria-label="Video link" autocomplete="off" spellcheck="false" />
+          <button type="submit">Find</button>
+        </form>
+        <div id="save-body"></div>
+      </section>
+
+      <section id="panel-downloads" role="tabpanel" aria-labelledby="tab-downloads" hidden></section>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

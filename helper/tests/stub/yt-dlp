@@ -1,0 +1,63 @@
+#!/bin/sh
+# Stands in for yt-dlp in the protocol tests. Prints what the real one prints for the options the
+# helper passes, so the tests need no network and no real tool.
+
+last=""
+home=""
+temp=""
+for arg in "$@"; do
+  case "$arg" in
+    home:*) home="${arg#home:}" ;;
+    temp:*) temp="${arg#temp:}" ;;
+  esac
+  last="$arg"
+done
+
+case "$*" in
+  *--version*)
+    echo "2099.01.01"
+    ;;
+  *" -J "*)
+    case "$last" in
+      *unsupported*)
+        echo "ERROR: Unsupported URL: $last" >&2
+        exit 1
+        ;;
+    esac
+    cat <<'JSON'
+{"title": "Stub clip", "uploader": "Stub channel", "duration": 61.5, "thumbnail": "https://example.com/t.jpg",
+ "formats": [
+  {"vcodec": "avc1", "acodec": "none", "height": 720, "filesize": 3000},
+  {"vcodec": "avc1", "acodec": "none", "height": 360, "filesize": 1000},
+  {"vcodec": "none", "acodec": "mp4a", "filesize": 500}
+ ]}
+JSON
+    ;;
+  *)
+    case "$last" in
+      *slow*)
+        # Runs until the helper cancels it.
+        echo "[cs-start]18|1000|Slow clip"
+        touch "$temp/slow.part"
+        while :; do
+          echo "[cs-progress]downloading|10|1000|5|99"
+          sleep 0.2
+        done
+        ;;
+      *broken*)
+        echo "ERROR: HTTP Error 404: Not Found" >&2
+        exit 1
+        ;;
+    esac
+    echo "[cs-start]137+140|2000|Stub clip | with a pipe"
+    echo "[cs-progress]downloading|500|1500|100|5"
+    echo "[cs-progress]finished|1500|1500|NA|NA"
+    echo "[cs-progress]downloading|500|500|100|0"
+    echo "[cs-progress]finished|500|500|NA|NA"
+    echo "[cs-post]started"
+    mkdir -p "$home"
+    out="$home/Stub clip.mp4"
+    echo "fake video" > "$out"
+    echo "[cs-path]$out"
+    ;;
+esac

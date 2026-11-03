@@ -1,0 +1,35 @@
+name: Branch rules
+
+# Enforces the branch flow:  <username>/<topic>  →  dev  →  main
+on:
+  pull_request:
+    branches: [dev, main]
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Branch rules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check source and target branches
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+          FROM_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          if [ "$BASE" = "main" ]; then
+            if [ "$HEAD" != "dev" ] || [ "$FROM_FORK" = "true" ]; then
+              echo "::error::Only the dev branch of this repository may be merged into main. Open your pull request against dev instead."
+              exit 1
+            fi
+            echo "OK: dev → main release pull request."
+          else
+            if ! [[ "$HEAD" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._/-]+$ ]]; then
+              echo "::error::Branch '$HEAD' doesn't follow the naming rule <username>/<topic>, e.g. sahed/fix-cancel or sahed/feature-windows. Rename the branch and reopen the pull request."
+              exit 1
+            fi
+            echo "OK: $HEAD → dev."
+          fi

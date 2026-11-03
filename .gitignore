@@ -1,0 +1,15 @@
+node_modules/
+.output/
+.wxt/
+.DS_Store
+
+# The Chrome signing key. Never commit it.
+keys/
+*.pem
+
+helper/target/
+helper/vendor/
+
+.impeccable/
+e2e/screenshots/
+dist/

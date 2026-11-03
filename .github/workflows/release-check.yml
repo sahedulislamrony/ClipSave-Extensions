@@ -1,0 +1,60 @@
+name: Release readiness
+
+# Extra checks on the pull request that releases dev to main. All other checks (CI, CodeQL, branch rules)
+# run on it as well.
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: release-check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Release readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Check version and changelog
+        run: |
+          VERSION=$(node scripts/version.mjs) || exit 1
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::v$VERSION is already released. Bump it with: node scripts/version.mjs <new version>"
+            exit 1
+          fi
+          PREV=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          if [ -n "$PREV" ]; then
+            HIGHEST=$(printf '%s\n%s\n' "${PREV#v}" "$VERSION" | sort -V | tail -1)
+            if [ "$HIGHEST" != "$VERSION" ]; then
+              echo "::error::Version $VERSION must be higher than the last release, $PREV."
+              exit 1
+            fi
+          fi
+          if ! grep -qF "## [$VERSION]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [$VERSION]' section. Move the Unreleased notes under it."
+            exit 1
+          fi
+          {
+            echo "### Release readiness"
+            echo "- Version **$VERSION**, previous release: ${PREV:-none}"
+            echo "- Changelog entry found"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - run: npm ci
+
+      # The same packaging the release does, so a broken zip shows up before the merge.
+      - name: Package the extension
+        run: sh scripts/package-extension.sh

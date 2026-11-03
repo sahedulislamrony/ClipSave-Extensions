@@ -1,0 +1,130 @@
+name: CI
+
+# Runs on every pull request into dev or main, and on main after a merge (that run drives the README badge,
+# so a failing pull request elsewhere doesn't turn it red). The Release workflow also runs it before publishing.
+# A direct push to dev (maintainer only) runs no checks.
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [main]
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  extension:
+    name: Extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Versions agree
+        run: node scripts/version.mjs
+
+      - name: Type check
+        run: npm run check
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build Chrome and Firefox
+        run: npm run build
+
+      - name: Lint the Firefox build
+        run: npm run lint:firefox
+
+  helper:
+    name: Helper (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS, os: macos-latest }
+          - { name: Linux, os: ubuntu-22.04 }
+    defaults:
+      run:
+        working-directory: helper
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: helper
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Unit and protocol tests
+        run: cargo test
+
+  browser:
+    name: Browser tests
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: helper
+
+      - name: Install ffmpeg, Chrome and Firefox
+        run: |
+          brew install ffmpeg
+          test -d "/Applications/Google Chrome.app" || brew install --cask google-chrome
+          test -d "/Applications/Firefox.app" || brew install --cask firefox
+
+      - run: npm ci
+
+      - name: Build the extension
+        run: npm run build
+
+      - name: Build the helper and fetch yt-dlp
+        run: |
+          cargo build --release --manifest-path helper/Cargo.toml
+          sh helper/fetch-engine.sh
+
+      - name: Chrome
+        run: npm run e2e:chrome
+
+      - name: Firefox
+        if: success() || failure()
+        run: npm run e2e:firefox
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-screenshots
+          path: e2e/screenshots/
+          if-no-files-found: ignore

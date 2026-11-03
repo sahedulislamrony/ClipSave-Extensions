@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in the ClipSave extension or helper doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! If a *site* stopped working, run the installer again first to get the newest yt-dlp.
+        Don't paste private links or account details.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you saw. Screenshots of the popup help.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a Vimeo video
+        2. Click ClipSave and pick 720p
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options: [Chrome, Firefox, Edge, Brave, Other]
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS (Apple silicon), macOS (Intel), Linux, Other]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versions
+      description: The extension version (chrome://extensions or about:addons) and the output of `clipsave-helper --version`.
+      placeholder: extension 0.1.0, helper 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options: [GitHub Release, Chrome Web Store, Firefox Add-ons, Built from source]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error message
+      description: The text the popup showed, if any.
+      render: text

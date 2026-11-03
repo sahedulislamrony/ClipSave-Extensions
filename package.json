@@ -1,0 +1,47 @@
+{
+  "name": "clipsave-extension",
+  "version": "0.1.0",
+  "description": "ClipSave for Chrome and Firefox: save videos and audio from 1000+ sites to your computer.",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "dev": "wxt -b chrome",
+    "dev:firefox": "wxt -b firefox",
+    "build": "npm run build:chrome && npm run build:firefox",
+    "build:chrome": "wxt build -b chrome",
+    "build:firefox": "wxt build -b firefox",
+    "zip:chrome": "wxt zip -b chrome --mode store",
+    "zip:firefox": "wxt zip -b firefox",
+    "lint:firefox": "web-ext lint --source-dir .output/firefox-mv2",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "postinstall": "wxt prepare",
+    "e2e": "node e2e/chrome.mjs && node e2e/firefox.mjs",
+    "e2e:chrome": "node e2e/chrome.mjs",
+    "e2e:firefox": "node e2e/firefox.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "puppeteer-core": "^25.16.0",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.0",
+    "web-ext": "^10.8.0",
+    "wxt": "^0.21.5"
+  },
+  "dependencies": {
+    "@fontsource/plus-jakarta-sans": "^5.3.0"
+  },
+  "homepage": "https://github.com/sahedulislamrony/ClipSave-Extensions#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sahedulislamrony/ClipSave-Extensions.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sahedulislamrony/ClipSave-Extensions/issues"
+  },
+  "author": "Sahedul Islam Rony",
+  "engines": {
+    "node": ">=22"
+  }
+}
