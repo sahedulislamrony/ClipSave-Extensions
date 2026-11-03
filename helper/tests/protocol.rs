@@ -1,10 +1,13 @@
 //! Runs the built helper the way a browser does, over stdin and stdout, with `tests/stub/yt-dlp`
-//! standing in for yt-dlp and a throwaway home folder.
+//! standing in for yt-dlp and a throwaway home folder. The stub is a shell script, so these run on macOS
+//! and Linux; on Windows the browser tests cover the same ground.
+#![cfg(unix)]
 
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -18,12 +21,18 @@ struct Helper {
 
 impl Helper {
     fn start() -> Helper {
+        // Tests run in parallel, and macOS's clock only counts microseconds, so the time alone can repeat;
+        // two tests sharing a home folder delete each other's files when they finish.
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let home =
-            std::env::temp_dir().join(format!("clipsave-test-{}-{unique}", std::process::id()));
+        let home = std::env::temp_dir().join(format!(
+            "clipsave-test-{}-{unique}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::SeqCst)
+        ));
         std::fs::create_dir_all(&home).unwrap();
         let stub = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/stub");
         let mut child = Command::new(env!("CARGO_BIN_EXE_clipsave-helper"))

@@ -18,7 +18,7 @@ reasonable time to release a fix before disclosing publicly; we are happy to cre
 
 ## Scope
 
-In scope: the extension, the ClipSave Helper, `install.sh`, and the build and release workflows. Of particular
+In scope: the extension, the ClipSave Helper, `install.sh`, `install.ps1`, and the build and release workflows. Of particular
 interest:
 
 * anything that lets a web page talk to the extension or the helper
@@ -26,7 +26,7 @@ interest:
 * the helper reading, writing or opening files outside the ClipSave folders
 * the installer installing something other than the published, checksummed release files
 
-Out of scope: vulnerabilities in [yt-dlp](https://github.com/yt-dlp/yt-dlp), FFmpeg, Deno, the browsers or the
+Out of scope: vulnerabilities in [yt-dlp](https://github.com/yt-dlp/yt-dlp), FFmpeg, QuickJS, the browsers or the
 websites ClipSave talks to (report those upstream), and issues that need someone to already control your user
 account.
 
@@ -37,7 +37,9 @@ account.
 * The helper passes only `http(s)` links to yt-dlp, after `--` and with `--ignore-config`, and doesn't let yt-dlp
   read the browser's message pipe.
 * The helper only opens files inside the ClipSave folders.
-* `install.sh` checks the helper archive against `SHA256SUMS.txt` from the same release before installing it.
+* `install.sh` and `install.ps1` check the helper archive against `SHA256SUMS.txt` from the same release before
+  installing it, and `helper/fetch-engine.sh` checks every bundled tool against its published (or, for QuickJS,
+  pinned) checksum when a release is built.
 
 ## Verifying a download
 
@@ -47,7 +49,7 @@ Every release has a `SHA256SUMS.txt`. Check the files you downloaded with:
 shasum -a 256 -c SHA256SUMS.txt --ignore-missing
 ```
 
-The helper isn't signed by Apple yet, which is why the macOS install goes through Terminal; see
+The helper isn't signed by Apple or Microsoft yet, which is why it installs from Terminal or PowerShell; see
 [docs/install.md](docs/install.md).
 
 ## Data handling

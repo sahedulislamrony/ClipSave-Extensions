@@ -29,23 +29,24 @@
 - **Keeps working in the background.** Close the popup and the download carries on. Cancel or retry any time.
 - **Private.** No account, no analytics, no servers. Everything runs on your computer.
 
-Files go to **Movies/ClipSave** (video) and **Music/ClipSave** (audio).
+Files go to a **ClipSave** folder in your Videos (Movies on macOS) and Music folders. Works on macOS, Windows and
+Linux.
 
 ## Install
 
-ClipSave has two parts: the browser extension, and a small **helper** app that does the downloading. Browser
-extensions aren't allowed to run download tools, so the helper runs [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-for them.
+ClipSave has two parts: the browser extension, and a small **helper** app that does the downloading with
+[yt-dlp](https://github.com/yt-dlp/yt-dlp). Browser extensions aren't allowed to run download tools, so the
+helper does it for them. It brings everything it needs, so there's nothing else to install.
 
-1. Install the helper (macOS or Linux):
-
-   ```bash
-   curl -fsSL https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest/download/install.sh | sh
-   ```
-
-2. Add the extension to your browser.
+1. Add the extension to Chrome, Edge, Brave or Firefox.
+2. Click its button. It shows one command with a **Copy** button.
+3. Paste it into Terminal (macOS, Linux) or PowerShell (Windows). The popup carries on by itself once it's done.
 
 The full guide, with every browser and troubleshooting, is in **[docs/install.md](docs/install.md)**.
+
+<p align="center">
+  <img src="docs/images/popup-helper-missing.png" width="300" alt="The ClipSave popup's one-time setup: a single install command with a Copy button">
+</p>
 
 | | Chrome, Edge, Brave | Firefox |
 |---|---|---|

@@ -59,8 +59,8 @@ Releases (version bump, changelog, the `dev` → `main` pull request) are descri
 3. Match the surrounding code: its naming, its comment density, and comments that explain *why*, not *what*.
    Rust is formatted with `cargo fmt`. TypeScript follows the existing style (two spaces, single quotes).
 4. If behaviour or setup changes, update the docs ([README](README.md), [docs/](docs)) in the same pull request,
-   and add a line under **Unreleased** in [CHANGELOG.md](CHANGELOG.md). Don't change the version; the
-   maintainer does that when releasing.
+   and add a line under **Unreleased** in [CHANGELOG.md](CHANGELOG.md). Don't touch `release.json` or the
+   version; the maintainer does that when releasing.
 5. Add or update tests for logic you change, and run them before pushing:
 
    ```bash
@@ -75,8 +75,8 @@ Releases (version bump, changelog, the `dev` → `main` pull request) are descri
    | Check | What it verifies |
    |---|---|
    | **Extension** | versions agree, type check, unit tests, Chrome and Firefox builds, Firefox add-on lint |
-   | **Helper (macOS)**, **Helper (Linux)** | `cargo fmt`, `cargo clippy`, unit and protocol tests |
-   | **Browser tests** | both builds in real Chrome and Firefox, saving a video through the real helper |
+   | **Helper (macOS)**, **Helper (Linux)**, **Helper (Windows)** | `cargo fmt`, `cargo clippy`, unit and protocol tests |
+   | **Browser tests (macOS)**, **Browser tests (Windows)** | both builds in real Chrome and Firefox, saving a video through the real helper |
    | **CodeQL** | code scanning for TypeScript, Rust and the workflow files |
    | **Branch rules** | your branch is `<username>/<topic>` and targets `dev` |
 

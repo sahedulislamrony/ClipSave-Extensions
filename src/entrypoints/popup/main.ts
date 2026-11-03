@@ -5,10 +5,12 @@ import './style.css';
 import { browser } from 'wxt/browser';
 import { isActive, onDownloadsChanged, readDownloads } from '@/lib/downloads';
 import { formatDuration, formatSize } from '@/lib/format';
+import { HELP_PAGE, installStep } from '@/lib/install';
 import type { Command, DownloadItem, Failure, FormatOption, HelperInfo, MediaInfo, Result } from '@/lib/types';
 import { isWebUrl } from '@/lib/url';
 
-const HELPER_PAGE = 'https://github.com/sahedulislamrony/ClipSave-Extensions/blob/main/docs/install.md#install-the-helper';
+/** How often the popup looks for a helper the user is installing. */
+const HELPER_CHECK_MS = 2000;
 
 type SaveState =
   | { kind: 'empty' }
@@ -87,16 +89,44 @@ function renderSave(state: SaveState) {
   }
 }
 
-function renderFailure(failure: Failure): HTMLElement {
-  if (failure.code === 'helper_missing') {
+let platform = '';
+
+function renderInstall(): HTMLElement {
+  const help = el('a', { href: HELP_PAGE, target: '_blank', rel: 'noreferrer' }, 'Help');
+  const step = installStep(platform);
+  if (!step) {
     return el(
       'div',
       { className: 'notice' },
-      el('h2', {}, 'One more step'),
-      el('p', {}, 'ClipSave needs a small desktop helper to save videos to your computer.'),
-      el('a', { className: 'primary', href: HELPER_PAGE, target: '_blank', rel: 'noreferrer' }, 'Get the helper'),
+      el('h2', {}, 'Not available here yet'),
+      el('p', {}, 'The ClipSave helper runs on macOS, Windows and Linux.'),
+      help,
     );
   }
+  const copy = el('button', { className: 'primary', type: 'button' }, 'Copy');
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(step.command);
+      copy.textContent = 'Copied';
+    } catch {
+      // Without clipboard access the command is still easy to select by hand.
+      getSelection()?.selectAllChildren(command);
+    }
+  });
+  const command = el('code', { className: 'command' }, step.command);
+  return el(
+    'div',
+    { className: 'notice' },
+    el('h2', {}, 'One more step'),
+    el('p', {}, `ClipSave needs its free helper to save files. Open ${step.app}, paste this and press Return:`),
+    command,
+    copy,
+    el('p', { className: 'meta waiting' }, 'ClipSave carries on by itself once the helper is installed. ', help),
+  );
+}
+
+function renderFailure(failure: Failure): HTMLElement {
+  if (failure.code === 'helper_missing') return renderInstall();
   return el(
     'div',
     { className: 'notice' },
@@ -222,6 +252,35 @@ async function find() {
   // A newer search may have started while this one ran.
   if (input.value.trim() !== url) return;
   renderSave(result.ok ? { kind: 'media', media: result.media } : { kind: 'failed', failure: result });
+  if (!result.ok && result.code === 'helper_missing') void waitForHelper();
+}
+
+let waiting = false;
+
+/** Checks for the helper while the install screen shows, and carries on as soon as it answers. */
+async function waitForHelper() {
+  if (waiting) return;
+  waiting = true;
+  for (;;) {
+    await new Promise((done) => setTimeout(done, HELPER_CHECK_MS));
+    const status = await send<{ helper: HelperInfo }>({ type: 'status' });
+    if (status.ok) break;
+  }
+  waiting = false;
+  await readCurrentTab();
+}
+
+/** Starts with the page the popup was opened on, when it's a web page. */
+async function readCurrentTab() {
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  if (tab?.url && isWebUrl(tab.url)) {
+    input.value = tab.url;
+    await find();
+  } else if (!input.value.trim()) {
+    renderSave({ kind: 'empty' });
+  } else {
+    await find();
+  }
 }
 
 tabSave.addEventListener('click', () => showTab('save'));
@@ -236,16 +295,15 @@ async function start() {
   onDownloadsChanged(renderDownloads);
   renderDownloads(await readDownloads());
 
-  const status = await send<{ helper: HelperInfo }>({ type: 'status' });
-  if (!status.ok) return renderSave({ kind: 'failed', failure: status });
+  platform = (await browser.runtime.getPlatformInfo()).os;
 
-  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-  if (tab?.url && isWebUrl(tab.url)) {
-    input.value = tab.url;
-    await find();
-  } else {
-    renderSave({ kind: 'empty' });
+  const status = await send<{ helper: HelperInfo }>({ type: 'status' });
+  if (!status.ok) {
+    renderSave({ kind: 'failed', failure: status });
+    if (status.code === 'helper_missing') void waitForHelper();
+    return;
   }
+  await readCurrentTab();
 }
 
 void start();

@@ -1,13 +1,11 @@
 //! ClipSave Helper. The browser starts it and talks to it over stdin and stdout; run by hand it
 //! takes `--install`, `--uninstall` and `--version`.
 
-#[cfg(not(unix))]
-compile_error!("The ClipSave Helper supports macOS and Linux so far.");
-
 mod download;
 mod engine;
 mod inspect;
 mod install;
+mod platform;
 mod protocol;
 
 use download::Jobs;
@@ -25,7 +23,13 @@ fn main() -> ExitCode {
         Some("--install") => install::install(),
         Some("--uninstall") => install::uninstall(),
         Some("--version") => {
-            println!("clipsave-helper {}", env!("CARGO_PKG_VERSION"));
+            // A reader that stops early (`| head -1`) closes the pipe; that's fine, not a crash.
+            let text = format!(
+                "clipsave-helper {}\n{}\n",
+                env!("CARGO_PKG_VERSION"),
+                Engine::locate().describe()
+            );
+            let _ = io::Write::write_all(&mut io::stdout(), text.as_bytes());
             Ok(())
         }
         // Browsers pass the caller's identity as arguments, and they aren't used.

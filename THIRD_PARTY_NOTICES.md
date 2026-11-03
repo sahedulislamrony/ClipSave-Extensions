@@ -24,13 +24,17 @@ following third-party components, each under its own license. All are compatible
 
 ## Shipped with the helper (release archives)
 
-| Component | License | Notes |
+All are unmodified upstream builds, downloaded and checksum-verified by `helper/fetch-engine.sh`.
+
+| Component | License | Build and source |
 |---|---|---|
-| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | [Unlicense](https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE) | the official release build, downloaded and checksum-verified by `helper/fetch-engine.sh`. It bundles Python and other libraries under their own licenses; see yt-dlp's [THIRD_PARTY_LICENSES.txt](https://github.com/yt-dlp/yt-dlp/blob/master/THIRD_PARTY_LICENSES.txt). |
+| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | [Unlicense](https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE) | official release build. It bundles Python and other libraries under their own licenses; see yt-dlp's [THIRD_PARTY_LICENSES.txt](https://github.com/yt-dlp/yt-dlp/blob/master/THIRD_PARTY_LICENSES.txt). |
+| [FFmpeg](https://ffmpeg.org) (ffmpeg, ffprobe) | [GPL-3.0-or-later](https://ffmpeg.org/legal.html) (GPL build) | macOS, Linux: static builds from [ffmpeg.martin-riedl.de](https://ffmpeg.martin-riedl.de), built with the open-source [build script](https://git.martin-riedl.de/ffmpeg/build-script). Windows: [yt-dlp/FFmpeg-Builds](https://github.com/yt-dlp/FFmpeg-Builds). FFmpeg's source is at [ffmpeg.org/download.html](https://ffmpeg.org/download.html); the exact version is printed by `ffmpeg -version`. |
+| [QuickJS-ng](https://github.com/quickjs-ng/quickjs) 0.18.0 | MIT | official release build; yt-dlp uses it for YouTube. |
 
-## Used but not distributed
+## Used if present
 
-The helper uses [FFmpeg](https://ffmpeg.org) and [Deno](https://deno.com) when they're installed on your
-computer. ClipSave doesn't include or distribute them.
+If no QuickJS is found, the helper uses [Deno](https://deno.com) when it's installed on your computer.
+ClipSave doesn't distribute Deno.
 
 Development tools (TypeScript, Vitest, web-ext, Puppeteer, the Rust toolchain) aren't distributed.
