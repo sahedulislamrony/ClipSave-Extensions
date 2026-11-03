@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -20,12 +21,18 @@ struct Helper {
 
 impl Helper {
     fn start() -> Helper {
+        // Tests run in parallel, and macOS's clock only counts microseconds, so the time alone can repeat;
+        // two tests sharing a home folder delete each other's files when they finish.
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let home =
-            std::env::temp_dir().join(format!("clipsave-test-{}-{unique}", std::process::id()));
+        let home = std::env::temp_dir().join(format!(
+            "clipsave-test-{}-{unique}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::SeqCst)
+        ));
         std::fs::create_dir_all(&home).unwrap();
         let stub = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/stub");
         let mut child = Command::new(env!("CARGO_BIN_EXE_clipsave-helper"))
