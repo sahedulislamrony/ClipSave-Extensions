@@ -1,6 +1,6 @@
 {
   "name": "clipsave-extension",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "ClipSave for Chrome and Firefox: save videos and audio from 1000+ sites to your computer.",
   "private": true,
   "type": "module",

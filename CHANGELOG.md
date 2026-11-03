@@ -6,7 +6,7 @@ All notable changes to ClipSave for browsers are documented here. The format fol
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-11-03
+## [1.0.0] - 2026-11-03
 
 ### Added
 - First release: the ClipSave extension for **Chrome, Edge, Brave and Firefox**, built from one codebase, and
