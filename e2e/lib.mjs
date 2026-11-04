@@ -12,7 +12,7 @@ export const HELPER =
 export const SCREENSHOTS = join(ROOT, 'e2e/screenshots');
 export const HOST_NAME = 'link.clipsave.helper';
 export const CHROME_ID = 'engejhilbedikenhabjndbpgpdhaedge';
-export const FIREFOX_ID = 'clipsave@clipsave.link';
+export const FIREFOX_ID = 'clipsave@sahedulislamrony.github.io';
 const CLIP = join(ROOT, 'e2e/fixtures/clip.mp4');
 
 mkdirSync(SCREENSHOTS, { recursive: true });

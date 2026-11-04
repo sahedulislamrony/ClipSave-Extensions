@@ -38,6 +38,9 @@ All notable changes to ClipSave for browsers are documented here. The format fol
   Downloads show as cards with the video's thumbnail. Corners are softly rounded throughout, never pill-shaped.
 - A single video is saved under its title, "Title.mp4", instead of "Title [id].mp4". Right-click saves keep the
   old name.
+- The Firefox add-on's ID is now `clipsave@sahedulislamrony.github.io`, because `clipsave@clipsave.link` is
+  taken on Firefox Add-ons. The helper accepts both, so earlier Firefox installs keep working; to get updates
+  from Firefox Add-ons, install ClipSave from there.
 - The install command also installs the extension for Chrome, Edge and Brave next to the helper, and fetches
   yt-dlp's newest release instead of keeping the one the release was built with.
 

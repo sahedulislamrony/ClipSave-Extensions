@@ -27,7 +27,8 @@ export default defineConfig({
       ? {
           browser_specific_settings: {
             gecko: {
-              id: 'clipsave@clipsave.link',
+              // The ID on Firefox Add-ons. (clipsave@clipsave.link, used before 1.2.0, is taken there.)
+              id: 'clipsave@sahedulislamrony.github.io',
               strict_min_version: '142.0',
               data_collection_permissions: { required: ['none'] },
             },

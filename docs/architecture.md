@@ -144,4 +144,5 @@ administrator rights are needed.
 - **Chromium browsers** allow the extension by ID (`allowed_origins`). The ID of unpacked builds comes from the
   `key` in `wxt.config.ts`. A Chrome Web Store listing gets its own ID, which has to be added to
   `CHROME_IDS` in `helper/src/install.rs`.
-- **Firefox** allows it by add-on ID, `clipsave@clipsave.link` (`allowed_extensions`).
+- **Firefox** allows it by add-on ID, `clipsave@sahedulislamrony.github.io` (`allowed_extensions`). Builds before 1.2.0 used
+  `clipsave@clipsave.link`, which is taken on Firefox Add-ons; the helper allows both.
