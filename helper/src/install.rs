@@ -137,11 +137,27 @@ fn helper_path() -> io::Result<PathBuf> {
     Ok(plain(&std::env::current_exe()?.canonicalize()?))
 }
 
+/// Registers with every browser that's set up on this computer. One browser refusing (macOS can block a
+/// folder) doesn't stop the others; it only fails when no browser could be registered at all.
 pub fn install() -> io::Result<()> {
     let exe = helper_path()?;
+    let mut registered = 0;
     for &(name, family, place) in targets() {
-        register(family, place, &exe)?;
-        println!("{name}: registered");
+        if !installed(family, place)? {
+            continue;
+        }
+        match register(family, place, &exe) {
+            Ok(()) => {
+                registered += 1;
+                println!("{name}: registered");
+            }
+            Err(e) => println!("{name}: couldn't register ({e})"),
+        }
+    }
+    if registered == 0 {
+        return Err(io::Error::other(
+            "Couldn't register with any browser. Open your browser once, then run the installer again.",
+        ));
     }
     Ok(())
 }
@@ -169,6 +185,31 @@ fn manifest_file(family: Family, place: &str) -> io::Result<PathBuf> {
     let config =
         dirs::config_dir().ok_or_else(|| io::Error::other("No config folder on this system"))?;
     Ok(config.join(place).join(file))
+}
+
+/// Whether the browser has its own folder yet, which it makes the first time it runs. Without this the
+/// helper would make folders for browsers that aren't there.
+#[cfg(unix)]
+fn installed(family: Family, place: &str) -> io::Result<bool> {
+    let config =
+        dirs::config_dir().ok_or_else(|| io::Error::other("No config folder on this system"))?;
+    let home = dirs::home_dir().ok_or_else(|| io::Error::other("No home folder"))?;
+    let folders = match family {
+        Family::Chromium => vec![Path::new(place)
+            .parent()
+            .map(|browser| config.join(browser))
+            .unwrap_or_else(|| config.clone())],
+        // Firefox keeps its profiles apart from where it looks for manifests.
+        Family::Firefox if cfg!(target_os = "macos") => vec![config.join("Firefox")],
+        Family::Firefox => vec![home.join(".mozilla"), config.join("mozilla")],
+    };
+    Ok(folders.iter().any(|folder| folder.is_dir()))
+}
+
+/// Registry keys are cheap to write and harmless when the browser is missing, so Windows registers with all.
+#[cfg(windows)]
+fn installed(_family: Family, _place: &str) -> io::Result<bool> {
+    Ok(true)
 }
 
 #[cfg(unix)]

@@ -53,7 +53,14 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 echo "Downloading the ClipSave Helper (about 110 MB)..."
-curl -fSL --progress-bar -o "$work/$asset" "$BASE/$asset"
+# Run as `curl ... | sh`, curl's stdin is the script, so it can't see the terminal's width and draws a
+# 79-column bar that wraps into a wall of #s in a narrower window. Tell it the width, or skip the bar.
+cols=$(stty size 2>/dev/null </dev/tty | awk '{ print $2 }') || true
+if [ -n "$cols" ] && [ "$cols" -gt 0 ] 2>/dev/null; then
+  COLUMNS=$cols curl -fSL --progress-bar -o "$work/$asset" "$BASE/$asset"
+else
+  curl -fsSL -o "$work/$asset" "$BASE/$asset"
+fi
 curl -fsSL -o "$work/SHA256SUMS.txt" "$BASE/SHA256SUMS.txt"
 
 expected=$(awk -v name="$asset" '$2 == name { print $1 }' "$work/SHA256SUMS.txt")
