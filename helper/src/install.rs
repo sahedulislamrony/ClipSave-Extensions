@@ -9,7 +9,12 @@ use std::path::{Path, PathBuf};
 
 pub const HOST_NAME: &str = "link.clipsave.helper";
 const DESCRIPTION: &str = "ClipSave Helper";
-const FIREFOX_ID: &str = "clipsave@clipsave.link";
+/// The Firefox add-on's ID, the one on Firefox Add-ons. Builds before 1.2.0 used the second, which is
+/// taken on Firefox Add-ons; it stays allowed so those installs keep working until they update.
+const FIREFOX_IDS: &[&str] = &[
+    "clipsave@sahedulislamrony.github.io",
+    "clipsave@clipsave.link",
+];
 
 /// Unpacked builds. Add the Chrome Web Store ID here once the listing has one.
 const CHROME_IDS: [&str; 1] = ["engejhilbedikenhabjndbpgpdhaedge"];
@@ -128,7 +133,7 @@ fn manifest(family: Family, path: &str) -> Value {
                 .collect();
             manifest["allowed_origins"] = json!(origins);
         }
-        Family::Firefox => manifest["allowed_extensions"] = json!([FIREFOX_ID]),
+        Family::Firefox => manifest["allowed_extensions"] = json!(FIREFOX_IDS),
     }
     manifest
 }
@@ -293,7 +298,11 @@ mod tests {
     #[test]
     fn firefox_manifest_uses_its_own_key() {
         let value = manifest(Family::Firefox, "/a/helper");
-        assert_eq!(value["allowed_extensions"][0], FIREFOX_ID);
+        assert_eq!(
+            value["allowed_extensions"][0],
+            "clipsave@sahedulislamrony.github.io"
+        );
+        assert_eq!(value["allowed_extensions"][1], "clipsave@clipsave.link");
         assert!(value.get("allowed_origins").is_none());
     }
 

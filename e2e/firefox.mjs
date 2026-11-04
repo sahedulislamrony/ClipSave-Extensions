@@ -178,10 +178,10 @@ try {
 
   await results.step('lets YouTube links through to the helper (Firefox build)', async () => {
     await client.run(find('https://www.youtube.com/watch?v=jNQXAC9IVRw'));
-    await client.until(`return !!(document.querySelector('.option') || document.querySelector('.notice'))`, 90000);
+    await client.until(`return !!(document.querySelector('#download') || document.querySelector('.notice'))`, 90000);
     const shown = await client.run(BODY);
     if (shown.includes("can't save from YouTube")) throw new Error(shown);
-    if (await client.run(`return !!document.querySelector('.option')`)) {
+    if (await client.run(`return !!document.querySelector('#download')`)) {
       // The thumbnail comes from YouTube; it should load in the extension page.
       await client.until(`const img = document.querySelector('img.thumb'); return !img || (img.complete && img.naturalWidth > 0)`, 10000);
       await client.screenshot('firefox-youtube.png');
@@ -192,8 +192,8 @@ try {
 
   await results.step('downloads a video into Movies/ClipSave', async () => {
     await client.run(find(server.clip));
-    await client.until(`return !!document.querySelector('.option')`, 60000);
-    await client.run(`document.querySelector('.option').click();`);
+    await client.until(`return !!document.querySelector('#download')`, 60000);
+    await client.run(`document.querySelector('#download').click();`);
     await client.until(`return !!document.querySelector('.item.done')`, 60000);
     await client.screenshot('firefox-done.png');
     const { video } = savedFiles(home);
@@ -203,7 +203,8 @@ try {
 
   await results.step('saves MP3 audio', async () => {
     await client.run(`document.querySelector('#tab-save').click();`);
-    await client.run(`const lists = document.querySelectorAll('#save-body .options'); lists[lists.length - 1].querySelector('.option').click();`);
+    // Audio side of the switch; MP3 is its first row, picked by default.
+    await client.run(`document.querySelector('.segmented button:last-child').click(); document.querySelector('#download').click();`);
     await client.until(`return document.querySelectorAll('.item.done').length === 2`, 60000);
     const { audio } = savedFiles(home);
     if (!audio.some((f) => f.endsWith('.mp3'))) throw new Error(`saved: ${audio.join(', ') || 'nothing'}`);

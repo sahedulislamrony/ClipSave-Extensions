@@ -5,11 +5,15 @@
 last=""
 home=""
 temp=""
+template=""
+previous=""
 for arg in "$@"; do
   case "$arg" in
     home:*) home="${arg#home:}" ;;
     temp:*) temp="${arg#temp:}" ;;
   esac
+  [ "$previous" = "-o" ] && template="$arg"
+  previous="$arg"
   last="$arg"
 done
 
@@ -22,6 +26,20 @@ case "$*" in
       *unsupported*)
         echo "ERROR: Unsupported URL: $last" >&2
         exit 1
+        ;;
+    esac
+    # A pure playlist link, or a video in a playlist when the helper asks for the playlist.
+    case "$*" in
+      *--yes-playlist*|*/playlist*)
+        cat <<'JSON'
+{"_type": "playlist", "title": "Stub list", "uploader": "Stub channel", "playlist_count": 3,
+ "entries": [
+  {"_type": "url", "url": "https://example.com/video?n=1", "title": "One", "duration": 30},
+  {"_type": "url", "url": "https://example.com/video?n=2", "title": "[Deleted video]"},
+  {"_type": "url", "url": "https://example.com/video?n=3", "title": "Three"}
+ ]}
+JSON
+        exit 0
         ;;
     esac
     cat <<'JSON'
@@ -56,7 +74,9 @@ JSON
     echo "[cs-progress]finished|500|500|NA|NA"
     echo "[cs-post]started"
     mkdir -p "$home"
-    out="$home/Stub clip.mp4"
+    # Fills in the output template the way yt-dlp would, for the fields the helper uses.
+    name=$(printf '%s' "$template" | sed -e 's/%(title)\.100B/Stub clip/' -e 's/%(id)s/stub/' -e 's/%(ext)s/mp4/' -e 's/%%/%/g')
+    out="$home/${name:-Stub clip.mp4}"
     echo "fake video" > "$out"
     echo "[cs-path]$out"
     ;;

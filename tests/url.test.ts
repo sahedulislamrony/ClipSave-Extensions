@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isWebUrl, isYouTube } from '@/lib/url';
+import { isVideoInPlaylist, isWebUrl, isYouTube } from '@/lib/url';
 
 describe('isYouTube', () => {
   it.each([
@@ -37,4 +37,24 @@ describe('isWebUrl', () => {
       expect(isWebUrl(url)).toBe(false);
     },
   );
+});
+
+describe('isVideoInPlaylist', () => {
+  it.each([
+    'https://www.youtube.com/watch?v=abc&list=PL123',
+    'https://music.youtube.com/watch?v=abc&list=RDabc',
+    'https://youtu.be/abc?list=PL123',
+  ])('offers the playlist for %s', (url) => {
+    expect(isVideoInPlaylist(url)).toBe(true);
+  });
+
+  it.each([
+    'https://www.youtube.com/watch?v=abc',
+    'https://www.youtube.com/playlist?list=PL123',
+    'https://www.youtube.com/watch?v=abc&list=',
+    'https://vimeo.com/1?list=PL123',
+    'not a link',
+  ])('does not for %s', (url) => {
+    expect(isVideoInPlaylist(url)).toBe(false);
+  });
 });

@@ -1,13 +1,30 @@
 import '@fontsource/plus-jakarta-sans/latin-500.css';
 import '@fontsource/plus-jakarta-sans/latin-600.css';
 import '@fontsource/plus-jakarta-sans/latin-700.css';
+import '@/styles/theme.css';
 import './style.css';
 import { browser } from 'wxt/browser';
 import { isActive, onDownloadsChanged, readDownloads } from '@/lib/downloads';
-import { formatDuration, formatSize } from '@/lib/format';
+import { estimateBytes, formatDuration, formatSize, numberPrefix } from '@/lib/format';
 import { HELP_PAGE, installStep } from '@/lib/install';
-import type { Command, DownloadItem, Failure, FormatOption, HelperInfo, MediaInfo, Result } from '@/lib/types';
-import { isWebUrl } from '@/lib/url';
+import {
+  PLAYLIST_OPTIONS,
+  type Command,
+  type DownloadItem,
+  type Failure,
+  type HelperInfo,
+  type Inspected,
+  type Numbering,
+  type MediaInfo,
+  type PlaylistInfo,
+  type Quality,
+  type Result,
+} from '@/lib/types';
+import { isVideoInPlaylist, isWebUrl } from '@/lib/url';
+import { el, icon, type IconName } from '@/lib/dom';
+import { readUpdateState } from '@/lib/prefs';
+import { available } from '@/lib/updates';
+import { applyTheme, onThemeChanged, readTheme, saveTheme, THEME_LABELS, THEMES } from '@/lib/theme';
 
 /** How often the popup looks for a helper the user is installing. */
 const HELPER_CHECK_MS = 2000;
@@ -16,23 +33,9 @@ type SaveState =
   | { kind: 'empty' }
   | { kind: 'loading' }
   | { kind: 'media'; media: MediaInfo }
+  /** `from` is the video the playlist was opened from, for the way back. */
+  | { kind: 'playlist'; playlist: PlaylistInfo; from: MediaInfo | null }
   | { kind: 'failed'; failure: Failure };
-
-const ICONS = {
-  download: 'M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5M5 19.5h14',
-  close: 'M6.5 6.5l11 11m0-11-11 11',
-  retry: 'M4.5 12a7.5 7.5 0 1 0 2.4-5.5M4.5 4.5v4h4',
-  folder: 'M4 7.5A1.5 1.5 0 0 1 5.5 6h4l2 2.5h7A1.5 1.5 0 0 1 20 10v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18z',
-  system: 'M4.5 5h15a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM9 20h6m-3-4v4',
-  light: 'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4',
-  dark: 'M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z',
-};
-
-/** The theme button steps through these. Kept in localStorage, which is synchronous, so the popup opens in the right colours. */
-const THEMES = ['system', 'light', 'dark'] as const;
-type Theme = (typeof THEMES)[number];
-const THEME_KEY = 'theme';
-const THEME_LABELS: Record<Theme, string> = { system: 'System', light: 'Light', dark: 'Dark' };
 
 const saveBody = document.querySelector<HTMLElement>('#save-body')!;
 const panelSave = document.querySelector<HTMLElement>('#panel-save')!;
@@ -43,43 +46,13 @@ const count = document.querySelector<HTMLElement>('#count')!;
 const form = document.querySelector<HTMLFormElement>('#link-form')!;
 const input = document.querySelector<HTMLInputElement>('#link')!;
 const themeButton = document.querySelector<HTMLButtonElement>('#theme')!;
-
-/** Only for text and attributes: titles and errors come from the web, so nothing here parses HTML. */
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  props: Partial<HTMLElementTagNameMap[K]> = {},
-  ...children: (Node | string | null)[]
-): HTMLElementTagNameMap[K] {
-  const node = Object.assign(document.createElement(tag), props);
-  node.append(...children.filter((c) => c !== null));
-  return node;
-}
-
-function icon(name: keyof typeof ICONS): SVGSVGElement {
-  const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('aria-hidden', 'true');
-  const path = document.createElementNS(ns, 'path');
-  path.setAttribute('d', ICONS[name]);
-  svg.append(path);
-  return svg;
-}
-
-function readTheme(): Theme {
-  try {
-    const saved = localStorage.getItem(THEME_KEY);
-    return THEMES.find((t) => t === saved) ?? 'system';
-  } catch {
-    return 'system';
-  }
-}
+const settingsButton = document.querySelector<HTMLButtonElement>('#settings')!;
 
 let theme = readTheme();
 
-function applyTheme() {
-  if (theme === 'system') delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = theme;
+/** The theme button steps through System, Light and Dark. */
+function showTheme() {
+  applyTheme(theme);
   const label = `Theme: ${THEME_LABELS[theme]}`;
   themeButton.title = label;
   themeButton.ariaLabel = label;
@@ -88,13 +61,8 @@ function applyTheme() {
 
 function nextTheme() {
   theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]!;
-  try {
-    if (theme === 'system') localStorage.removeItem(THEME_KEY);
-    else localStorage.setItem(THEME_KEY, theme);
-  } catch {
-    // Without storage the choice still holds until the popup closes.
-  }
-  applyTheme();
+  saveTheme(theme);
+  showTheme();
 }
 
 function send<T>(command: Command): Promise<Result<T>> {
@@ -112,19 +80,35 @@ function showTab(tab: 'save' | 'downloads') {
 function renderSave(state: SaveState) {
   switch (state.kind) {
     case 'empty':
-      return saveBody.replaceChildren(el('p', { className: 'hint' }, 'Open a page with a video, or paste a link above.'));
+      return saveBody.replaceChildren(
+        el(
+          'div',
+          { className: 'empty' },
+          el('span', { className: 'empty-icon' }, icon('link')),
+          el('p', { className: 'empty-title' }, 'Nothing to save here'),
+          el('p', { className: 'meta' }, 'Open a page with a video, or paste a link above.'),
+        ),
+      );
     case 'loading':
       return saveBody.replaceChildren(
         el(
           'div',
-          { className: 'media', ariaBusy: 'true' },
-          el('div', { className: 'thumb skeleton' }),
-          el('div', { className: 'media-text' }, el('div', { className: 'line skeleton' }), el('div', { className: 'line short skeleton' })),
+          { className: 'loading', ariaBusy: 'true', ariaLabel: 'Reading this page' },
+          el(
+            'div',
+            { className: 'media' },
+            el('div', { className: 'thumb skeleton' }),
+            el('div', { className: 'media-text' }, el('div', { className: 'line skeleton' }), el('div', { className: 'line short skeleton' })),
+          ),
+          el('div', { className: 'segmented skeleton' }),
+          el('div', { className: 'options' }, ...[0, 1, 2].map(() => el('div', { className: 'option skeleton' }))),
+          el('p', { className: 'meta center' }, 'Finding qualities. It usually takes a few seconds.'),
         ),
-        el('p', { className: 'hint' }, 'Reading this page. It usually takes a few seconds.'),
       );
     case 'media':
       return saveBody.replaceChildren(...renderMedia(state.media));
+    case 'playlist':
+      return saveBody.replaceChildren(...renderPlaylist(state.playlist, state.from));
     case 'failed':
       return saveBody.replaceChildren(renderFailure(state.failure));
   }
@@ -176,43 +160,323 @@ function renderFailure(failure: Failure): HTMLElement {
   );
 }
 
-function renderMedia(media: MediaInfo): Node[] {
-  const meta = [media.uploader, formatDuration(media.durationSec)].filter(Boolean).join(' · ');
-  const header = el(
-    'div',
-    { className: 'media' },
-    media.thumbnail
-      ? el('img', { className: 'thumb', src: media.thumbnail, alt: '', referrerPolicy: 'no-referrer' })
-      : el('div', { className: 'thumb' }),
-    el('div', { className: 'media-text' }, el('p', { className: 'title', title: media.title }, media.title), el('p', { className: 'meta' }, meta)),
-  );
-  const rows = (options: FormatOption[]) => options.map((option) => renderOption(media, option));
-  const video = media.options.filter((o) => o.quality.kind !== 'audio');
-  const audio = media.options.filter((o) => o.quality.kind === 'audio');
-  return [
-    header,
-    el('h2', { className: 'group' }, 'Video'),
-    el('div', { className: 'options' }, ...rows(video)),
-    el('h2', { className: 'group' }, 'Audio'),
-    el('div', { className: 'options' }, ...rows(audio)),
-  ];
+/** A quality row: what it saves, how big it is, and whether it's the one picked. */
+interface Choice {
+  key: string;
+  label: string;
+  quality: Quality;
+  sizeBytes: number | null;
 }
 
-function renderOption(media: MediaInfo, option: FormatOption): HTMLElement {
+const isAudio = (choice: Choice) => choice.quality.kind === 'audio';
+
+/** Same tags as the app: 4K from 2160p, HD from 1080p. */
+function tagFor(quality: Quality): string | null {
+  if (quality.kind !== 'video') return null;
+  if (quality.height >= 2160) return '4K';
+  if (quality.height >= 1080) return 'HD';
+  return null;
+}
+
+/** "1.2 GB" when the size is known, "≈ 1.2 GB" when it's estimated, nothing when neither. */
+type SizeOf = (choice: Choice) => string | null;
+
+/** A known size, else an estimate from the video's length. */
+function sizeLabel(choice: Choice, durationSec: number | null): string | null {
+  const known = formatSize(choice.sizeBytes);
+  if (known) return known;
+  const guess = formatSize(estimateBytes(choice.quality, [durationSec]));
+  return guess ? `≈ ${guess}` : null;
+}
+
+/**
+ * The app's picker: a Video | Audio switch over selectable quality rows, best first and picked by
+ * default. Each side remembers its own pick. `onChange` hears the current pick, starting now.
+ * `setSizes` rewrites the size beside every resolution, for estimates that change with a selection.
+ */
+function qualityPicker(
+  choices: Choice[],
+  sizeOf: SizeOf,
+  onChange: (choice: Choice) => void,
+): { element: HTMLElement; setSizes: (sizeOf: SizeOf) => void } {
+  const sides = { video: choices.filter((c) => !isAudio(c)), audio: choices.filter(isAudio) };
+  const picked = { video: sides.video[0], audio: sides.audio[0] };
+  let side: 'video' | 'audio' = sides.video.length > 0 ? 'video' : 'audio';
+
+  const rows = new Map<Choice, HTMLElement>();
+  const sizes = new Map<Choice, HTMLElement>();
+  for (const choice of choices) {
+    const tag = tagFor(choice.quality);
+    const size = el('span', { className: 'option-size' });
+    const row = el(
+      'button',
+      { className: 'option', type: 'button', role: 'radio', onclick: () => pick(choice) },
+      el('span', { className: 'option-label' }, choice.label.replace(/ audio$/i, '')),
+      tag ? el('span', { className: `tag tag-${tag.toLowerCase()}` }, tag) : null,
+      size,
+      el('span', { className: 'tick' }, icon('check')),
+    );
+    rows.set(choice, row);
+    sizes.set(choice, size);
+  }
+  function setSizes(next: SizeOf) {
+    for (const [choice, size] of sizes) size.textContent = next(choice) ?? '';
+  }
+  setSizes(sizeOf);
+  const list = el('div', { className: 'options', role: 'radiogroup', ariaLabel: 'Quality' }, ...rows.values());
+
+  const segment = (name: 'video' | 'audio', label: string) =>
+    el('button', { type: 'button', role: 'radio', onclick: () => show(name) }, icon(name), label);
+  const segments = { video: segment('video', 'Video'), audio: segment('audio', 'Audio') };
+  const switcher = el('div', { className: 'segmented', role: 'radiogroup', ariaLabel: 'Save as' }, segments.video, segments.audio);
+
+  function update() {
+    for (const name of ['video', 'audio'] as const) {
+      segments[name].ariaChecked = String(name === side);
+      segments[name].disabled = sides[name].length === 0;
+    }
+    for (const [choice, row] of rows) {
+      row.hidden = isAudio(choice) !== (side === 'audio');
+      row.ariaChecked = String(choice === picked[side]);
+    }
+    switcher.style.setProperty('--index', side === 'video' ? '0' : '1');
+    const current = picked[side];
+    if (current) onChange(current);
+  }
+  function show(name: 'video' | 'audio') {
+    side = name;
+    update();
+  }
+  function pick(choice: Choice) {
+    picked[isAudio(choice) ? 'audio' : 'video'] = choice;
+    update();
+  }
+  update();
+  return { element: el('div', { className: 'picker' }, switcher, list), setSizes };
+}
+
+function mediaHeader(thumbnail: string | null, title: string, meta: string, fallback: IconName): HTMLElement {
   return el(
-    'button',
-    {
-      className: 'option',
-      onclick: async () => {
-        const result = await send<object>({ type: 'download', media, option });
-        if (result.ok) showTab('downloads');
-        else renderSave({ kind: 'failed', failure: result });
-      },
-    },
-    el('span', { className: 'option-label' }, option.label),
-    el('span', { className: 'option-size' }, formatSize(option.sizeBytes) ?? ''),
-    icon('download'),
+    'div',
+    { className: 'media' },
+    thumbnail
+      ? el('img', { className: 'thumb', src: thumbnail, alt: '', referrerPolicy: 'no-referrer' })
+      : el('div', { className: 'thumb thumb-icon' }, icon(fallback)),
+    el('div', { className: 'media-text' }, el('p', { className: 'title', title }, title), el('p', { className: 'meta' }, meta)),
   );
+}
+
+/** A labelled text field with a pencil, like the app's name field. Starts as `value`. */
+function nameField(label: string, value: string, placeholder: string): { element: HTMLElement; input: HTMLInputElement } {
+  const input = el('input', { type: 'text', value: value.slice(0, 100), placeholder, maxLength: 100, spellcheck: false });
+  return {
+    input,
+    element: el(
+      'label',
+      { className: 'field' },
+      el('span', { className: 'field-label' }, label),
+      el('span', { className: 'name-field' }, input, icon('edit')),
+    ),
+  };
+}
+
+/** A row of choices with a sliding thumb, like the Video | Audio switch. */
+function segmented<T extends string>(label: string, options: [T, string][], selected: T, onChange: (value: T) => void): HTMLElement {
+  const group = el('div', { className: 'segmented', role: 'radiogroup', ariaLabel: label });
+  group.style.setProperty('--count', String(options.length));
+  const buttons = options.map(([value, text]) => el('button', { type: 'button', role: 'radio' }, text));
+  const select = (value: T) => {
+    const index = options.findIndex(([v]) => v === value);
+    group.style.setProperty('--index', String(index));
+    buttons.forEach((button, i) => (button.ariaChecked = String(i === index)));
+  };
+  buttons.forEach((button, i) =>
+    button.addEventListener('click', () => {
+      const value = options[i]![0];
+      select(value);
+      onChange(value);
+    }),
+  );
+  group.append(...buttons);
+  select(selected);
+  return group;
+}
+
+/** The sticky bar at the bottom of the Save tab. */
+function actionBar(...children: HTMLElement[]): HTMLElement {
+  return el('div', { className: 'save-bar' }, ...children);
+}
+
+function renderMedia(media: MediaInfo): Node[] {
+  const meta = [media.uploader, formatDuration(media.durationSec)].filter(Boolean).join(' · ');
+  const offer = isVideoInPlaylist(media.url)
+    ? el(
+        'button',
+        { className: 'playlist-offer', type: 'button', onclick: () => void openPlaylist(media) },
+        icon('playlist'),
+        el('span', {}, 'Save the whole playlist'),
+        icon('next'),
+      )
+    : null;
+
+  const name = nameField('File name', media.title, 'Name');
+  let choice: Choice | undefined;
+  const picker = qualityPicker(
+    media.options,
+    (option) => sizeLabel(option, media.durationSec),
+    (picked) => (choice = picked),
+  ).element;
+  const download = el('button', { id: 'download', className: 'primary wide', type: 'button' }, icon('download'), 'Download');
+  download.addEventListener('click', async () => {
+    if (!choice) return;
+    download.disabled = true;
+    const result = await send<object>({ type: 'download', media, option: { ...choice }, name: name.input.value.trim() || null });
+    download.disabled = false;
+    if (result.ok) showTab('downloads');
+    else renderSave({ kind: 'failed', failure: result });
+  });
+  return [mediaHeader(media.thumbnail, media.title, meta, 'video'), ...(offer ? [offer] : []), name.element, picker, actionBar(download)];
+}
+
+async function openPlaylist(from: MediaInfo) {
+  renderSave({ kind: 'loading' });
+  const result = await send<Inspected>({ type: 'inspect', url: from.url, playlist: true });
+  if (input.value.trim() !== from.url) return;
+  if (!result.ok) return renderSave({ kind: 'failed', failure: result });
+  if (result.playlist) return renderSave({ kind: 'playlist', playlist: result.playlist, from });
+  // The site had no playlist after all.
+  renderSave({ kind: 'media', media: result.media });
+}
+
+function plural(n: number, word: string) {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+function renderPlaylist(playlist: PlaylistInfo, from: MediaInfo | null): Node[] {
+  const { entries } = playlist;
+  const back = from
+    ? el(
+        'button',
+        { className: 'back', type: 'button', onclick: () => renderSave({ kind: 'media', media: from }) },
+        icon('back'),
+        'This video only',
+      )
+    : null;
+  const count =
+    playlist.total && playlist.total > entries.length
+      ? `first ${entries.length} of ${playlist.total} videos`
+      : plural(entries.length, 'video');
+  const header = mediaHeader(playlist.thumbnail, playlist.title, [playlist.uploader, count].filter(Boolean).join(' · '), 'playlist');
+  const lead = back ? [back, header] : [header];
+  if (entries.length === 0) return [...lead, el('p', { className: 'hint' }, 'This playlist has no videos to save.')];
+
+  const folder = nameField('Folder name', playlist.title, 'Folder name');
+  // Numbers count against the whole playlist, so a video keeps its number whichever ones are ticked.
+  const total = playlist.total && playlist.total > entries.length ? playlist.total : entries.length;
+  let numbering: Numbering = 'asc';
+  const preview = el('p', { className: 'meta preview' });
+  const numberSwitch = segmented<Numbering>(
+    'Number files',
+    [
+      ['asc', `1 → ${total}`],
+      ['desc', `${total} → 1`],
+      ['none', 'None'],
+    ],
+    numbering,
+    (value) => {
+      numbering = value;
+      refresh();
+    },
+  );
+
+  // A playlist's videos aren't read one by one, so its sizes are estimates from their lengths.
+  const boxes = entries.map((entry) => el('input', { type: 'checkbox', className: 'check', checked: true, ariaLabel: entry.title }));
+  const chosen = () => entries.filter((_, i) => boxes[i]!.checked);
+  const estimate = (option: Choice) => {
+    const size = formatSize(estimateBytes(option.quality, chosen().map((entry) => entry.durationSec)));
+    return size ? `≈ ${size}` : null;
+  };
+  let choice: Choice | undefined;
+  let refresh = () => {};
+  const picker = qualityPicker(PLAYLIST_OPTIONS.map((option) => ({ ...option, sizeBytes: null })), estimate, (picked) => {
+    choice = picked;
+    refresh();
+  });
+
+  const rows = entries.map((entry, i) =>
+    el(
+      'label',
+      { className: 'entry' },
+      el('span', { className: 'entry-index' }, String(i + 1)),
+      entry.thumbnail
+        ? el('img', { className: 'entry-thumb', src: entry.thumbnail, alt: '', loading: 'lazy', referrerPolicy: 'no-referrer' })
+        : el('span', { className: 'entry-thumb' }),
+      el(
+        'span',
+        { className: 'entry-text' },
+        el('span', { className: 'entry-title', title: entry.title }, entry.title),
+        el('span', { className: 'entry-time' }, formatDuration(entry.durationSec) ?? ''),
+      ),
+      boxes[i]!,
+    ),
+  );
+
+  const summary = el('p', { className: 'meta' });
+  const toggle = el('button', { className: 'small-button', type: 'button' });
+  const save = el('button', { id: 'download', className: 'primary wide', type: 'button' });
+  refresh = () => {
+    const n = chosen().length;
+    const size = choice ? estimate(choice) : null;
+    summary.textContent = [`${n} of ${entries.length} selected`, size].filter(Boolean).join(' · ');
+    picker.setSizes(estimate);
+    save.replaceChildren(
+      icon('download'),
+      n === 0 ? 'Pick videos to download' : [`Download ${plural(n, 'video')}`, size].filter(Boolean).join(' · '),
+    );
+    save.disabled = n === 0;
+    toggle.textContent = n > 0 ? 'Clear' : 'Select all';
+    const first = chosen()[0] ?? entries[0]!;
+    const firstName = `${numberPrefix(entries.indexOf(first), total, numbering)}${first.title}`;
+    preview.textContent = `First file: ${firstName}`;
+    preview.title = firstName;
+  };
+  for (const box of boxes) box.addEventListener('change', refresh);
+  toggle.addEventListener('click', () => {
+    const all = chosen().length === 0;
+    for (const box of boxes) box.checked = all;
+    refresh();
+  });
+  save.addEventListener('click', async () => {
+    if (!choice) return;
+    save.disabled = true;
+    const option = { key: choice.key, label: choice.label, quality: choice.quality };
+    const result = await send<object>({
+      type: 'downloadPlaylist',
+      folder: folder.input.value.trim() || playlist.title,
+      entries: entries.map((entry, index) => ({ ...entry, index })).filter((_, i) => boxes[i]!.checked),
+      option,
+      numbering,
+      total,
+    });
+    if (result.ok) showTab('downloads');
+    else renderSave({ kind: 'failed', failure: result });
+  });
+  refresh();
+
+  return [
+    ...lead,
+    folder.element,
+    el('div', { className: 'field' }, el('span', { className: 'field-label' }, 'Number files'), numberSwitch, preview),
+    picker.element,
+    el(
+      'div',
+      { className: 'section-row' },
+      el('div', {}, el('h2', { className: 'section-title' }, 'Videos'), summary),
+      toggle,
+    ),
+    el('div', { className: 'entries' }, ...rows),
+    actionBar(save),
+  ];
 }
 
 function statusLine(item: DownloadItem): string {
@@ -238,8 +502,15 @@ function statusLine(item: DownloadItem): string {
   }
 }
 
-function iconButton(name: keyof typeof ICONS, label: string, onclick: () => void): HTMLElement {
+function iconButton(name: IconName, label: string, onclick: () => void): HTMLElement {
   return el('button', { className: 'icon-button', title: label, ariaLabel: label, onclick }, icon(name));
+}
+
+function itemTile(item: DownloadItem): HTMLElement {
+  if (item.thumbnail) return el('img', { className: 'item-tile', src: item.thumbnail, alt: '', referrerPolicy: 'no-referrer' });
+  const name: IconName =
+    item.status === 'done' ? 'check' : item.status === 'failed' ? 'alert' : item.quality.kind === 'audio' ? 'audio' : 'video';
+  return el('span', { className: 'item-tile' }, icon(name));
 }
 
 function renderItem(item: DownloadItem): HTMLElement {
@@ -254,11 +525,12 @@ function renderItem(item: DownloadItem): HTMLElement {
   return el(
     'article',
     { className: `item ${item.status}` },
+    itemTile(item),
     el(
       'div',
       { className: 'item-text' },
-      el('p', { className: 'title', title: item.title }, item.title),
-      el('p', { className: 'meta' }, statusLine(item)),
+      el('p', { className: 'item-title', title: item.title }, item.title),
+      el('p', { className: 'meta' }, item.playlist && item.status === 'queued' ? `Waiting · ${item.playlist.title}` : statusLine(item)),
       bar,
     ),
     el(
@@ -276,12 +548,24 @@ function renderDownloads(items: DownloadItem[]) {
   count.hidden = active === 0;
   count.textContent = String(active);
   if (items.length === 0) {
-    return panelDownloads.replaceChildren(el('p', { className: 'hint' }, 'Videos you save will show up here.'));
+    return panelDownloads.replaceChildren(
+      el(
+        'div',
+        { className: 'empty' },
+        el('span', { className: 'empty-icon' }, icon('download')),
+        el('p', { className: 'empty-title' }, 'No downloads yet'),
+        el('p', { className: 'meta' }, 'Videos you save will show up here.'),
+      ),
+    );
   }
   const finished = items.length > active;
+  const actions = [
+    active > 1 ? el('button', { className: 'text-button', onclick: () => void send({ type: 'cancelAll' }) }, 'Cancel all') : null,
+    finished ? el('button', { className: 'text-button', onclick: () => void send({ type: 'clear' }) }, 'Clear finished') : null,
+  ].filter((button) => button !== null);
   panelDownloads.replaceChildren(
-    ...items.map(renderItem),
-    ...(finished ? [el('button', { className: 'text-button', onclick: () => void send({ type: 'clear' }) }, 'Clear finished')] : []),
+    el('div', { className: 'items' }, ...items.map(renderItem)),
+    ...(actions.length > 0 ? [el('div', { className: 'list-actions' }, ...actions)] : []),
   );
 }
 
@@ -289,10 +573,12 @@ async function find() {
   const url = input.value.trim();
   if (!url) return renderSave({ kind: 'empty' });
   renderSave({ kind: 'loading' });
-  const result = await send<{ media: MediaInfo }>({ type: 'inspect', url });
+  const result = await send<Inspected>({ type: 'inspect', url });
   // A newer search may have started while this one ran.
   if (input.value.trim() !== url) return;
-  renderSave(result.ok ? { kind: 'media', media: result.media } : { kind: 'failed', failure: result });
+  if (!result.ok) renderSave({ kind: 'failed', failure: result });
+  else if (result.playlist) renderSave({ kind: 'playlist', playlist: result.playlist, from: null });
+  else renderSave({ kind: 'media', media: result.media });
   if (!result.ok && result.code === 'helper_missing') void waitForHelper();
 }
 
@@ -324,8 +610,17 @@ async function readCurrentTab() {
   }
 }
 
-applyTheme();
+settingsButton.replaceChildren(icon('settings'));
+showTheme();
+onThemeChanged((changed) => {
+  theme = changed;
+  showTheme();
+});
 themeButton.addEventListener('click', nextTheme);
+settingsButton.addEventListener('click', () => {
+  void browser.runtime.openOptionsPage();
+  close();
+});
 tabSave.addEventListener('click', () => showTab('save'));
 tabDownloads.addEventListener('click', () => showTab('downloads'));
 form.addEventListener('submit', (event) => {
@@ -334,6 +629,32 @@ form.addEventListener('submit', (event) => {
   void find();
 });
 
+/** A line under the header when the last check found something newer. Opens Settings, where it's one click. */
+async function showUpdateNotice(helper: HelperInfo) {
+  const found = available(await readUpdateState(), {
+    extension: browser.runtime.getManifest().version,
+    helper: helper.version,
+    ytDlp: helper.ytDlp,
+  });
+  if (!found.version && !found.ytDlp) return;
+  const text = found.version ? `ClipSave ${found.version} is available` : 'A newer yt-dlp is available';
+  const notice = el(
+    'button',
+    {
+      className: 'update-notice',
+      type: 'button',
+      onclick: () => {
+        void browser.runtime.openOptionsPage();
+        close();
+      },
+    },
+    icon('refresh'),
+    el('span', {}, text),
+    el('span', { className: 'update-notice-action' }, 'Update'),
+  );
+  document.querySelector('.top')!.after(notice);
+}
+
 async function start() {
   onDownloadsChanged(renderDownloads);
   renderDownloads(await readDownloads());
@@ -341,6 +662,7 @@ async function start() {
   platform = (await browser.runtime.getPlatformInfo()).os;
 
   const status = await send<{ helper: HelperInfo }>({ type: 'status' });
+  if (status.ok) void showUpdateNotice(status.helper);
   if (!status.ok) {
     renderSave({ kind: 'failed', failure: status });
     if (status.code === 'helper_missing') void waitForHelper();

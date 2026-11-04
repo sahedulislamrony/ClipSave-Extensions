@@ -7,8 +7,14 @@ name: Release
 # Actions → Release → Run workflow on main; the same rules apply.
 #
 # Optional repository secrets (Settings → Secrets and variables → Actions):
-#   AMO_JWT_ISSUER, AMO_JWT_SECRET   addons.mozilla.org API keys. When set, the release also has a signed
-#                                    .xpi that installs in any Firefox. Without them that file is skipped.
+#   AMO_JWT_ISSUER, AMO_JWT_SECRET   addons.mozilla.org API keys. When set, each release is submitted to
+#                                    Firefox Add-ons, and Firefox updates everyone once Mozilla approves it.
+#                                    Without them the Firefox upload is skipped.
+#
+# Optional repository variable:
+#   AMO_CHANNEL   listed (the default): publish on the public Firefox Add-ons listing, which updates
+#                 itself. unlisted: sign only, and attach the signed .xpi to the GitHub release instead.
+#                 The first listed version is submitted by hand on addons.mozilla.org, with its listing.
 on:
   push:
     branches: [main]
@@ -139,6 +145,7 @@ jobs:
       VERSION: ${{ needs.plan.outputs.version }}
       AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
       AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+      AMO_CHANNEL: ${{ vars.AMO_CHANNEL || 'listed' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -158,21 +165,33 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Sign the Firefox add-on
+      - name: Submit the Firefox add-on
         if: env.AMO_JWT_ISSUER != '' && env.AMO_JWT_SECRET != ''
+        # The GitHub release goes out either way: a listing that doesn't exist yet, or a review hiccup on
+        # Firefox Add-ons, shows as a failed step here and is retried by hand on addons.mozilla.org.
+        continue-on-error: true
         run: |
-          npx web-ext sign --channel unlisted \
-            --source-dir .output/firefox-mv2 \
-            --upload-source-code "dist/ClipSave-$VERSION-sources.zip" \
-            --artifacts-dir signed \
-            --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
-          mv signed/*.xpi "dist/ClipSave-$VERSION-firefox.xpi"
+          if [ "$AMO_CHANNEL" = unlisted ]; then
+            npx web-ext sign --channel unlisted \
+              --source-dir .output/firefox-mv2 \
+              --upload-source-code "dist/ClipSave-$VERSION-sources.zip" \
+              --artifacts-dir signed \
+              --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
+            mv signed/*.xpi "dist/ClipSave-$VERSION-firefox.xpi"
+          else
+            # Listed versions are reviewed by Mozilla before Firefox offers them, so this only submits.
+            # Once approved, every Firefox with ClipSave from Firefox Add-ons updates by itself.
+            npx web-ext sign --channel listed --approval-timeout 0 \
+              --source-dir .output/firefox-mv2 \
+              --upload-source-code "dist/ClipSave-$VERSION-sources.zip" \
+              --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
+          fi
 
       - name: Add the installers and checksums
         run: |
           cp scripts/install.sh scripts/install.ps1 dist/
           cd dist
-          sha256sum ClipSave-* clipsave-helper-* install.sh install.ps1 > SHA256SUMS.txt
+          sha256sum ClipSave-* clipsave-helper-* clipsave-extension-* install.sh install.ps1 > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Write release notes
@@ -193,7 +212,9 @@ jobs:
           - macOS, Linux: \`curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/latest/download/install.sh | sh\`
           - Windows (PowerShell): \`irm https://github.com/$GITHUB_REPOSITORY/releases/latest/download/install.ps1 | iex\`
 
-          Extension: \`ClipSave-$VERSION-chrome-unpacked.zip\` for Chrome, Edge and Brave, or the Firefox add-on.
+          Extension: Firefox Add-ons for Firefox (updates itself). Chrome, Edge and Brave: the install command also
+          puts the extension next to the helper; load that folder with **Load unpacked** and Settings updates it in
+          one click. \`ClipSave-$VERSION-chrome-unpacked.zip\` is the same build, for loading by hand.
           Verify any file with \`SHA256SUMS.txt\`.
           EOF
 
@@ -203,5 +224,5 @@ jobs:
         run: |
           PRERELEASE=""
           case "$VERSION" in *-*) PRERELEASE="--prerelease" ;; esac
-          gh release create "v$VERSION" dist/ClipSave-* dist/clipsave-helper-* dist/install.sh dist/install.ps1 dist/SHA256SUMS.txt \
+          gh release create "v$VERSION" dist/ClipSave-* dist/clipsave-helper-* dist/clipsave-extension-* dist/install.sh dist/install.ps1 dist/SHA256SUMS.txt \
             --target "$GITHUB_SHA" --title "ClipSave for browsers $VERSION" --notes-file RELEASE_NOTES.md $PRERELEASE

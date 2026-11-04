@@ -10,7 +10,7 @@ Only the latest release receives security fixes. Please update before reporting.
 
 * Preferred: GitHub's private reporting, **Security → Report a vulnerability** on the
   [repository](https://github.com/sahedulislamrony/ClipSave-Extensions/security/advisories/new).
-* Or email **sahedul.dev@gmail.com** with the subject `ClipSave extension security`.
+* Or email **support@clipsave.link** with the subject `ClipSave extension security`.
 
 Include what you found, steps to reproduce, the affected version, and the impact you see. You can expect an
 acknowledgement within a few days and a fix or a clear answer as soon as it can be assessed. Please give us

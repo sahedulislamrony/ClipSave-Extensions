@@ -7,8 +7,6 @@ Thanks for helping! ClipSave is small and private, so a few principles guide wha
 * **Extractor problems belong upstream.** If a site stopped working, update yt-dlp first (run the installer
   again). If it still fails, report it to [yt-dlp](https://github.com/yt-dlp/yt-dlp/issues). ClipSave only
   wraps yt-dlp.
-* **YouTube stays out of the Chrome build.** The Chrome Web Store rejects extensions that download from YouTube,
-  and `src/lib/variant.ts` keeps that rule at build time. Changes that weaken it won't be merged.
 * **Few words in the UI.** Match the existing popup: short labels, plain sentences.
 
 ## Reporting bugs and ideas

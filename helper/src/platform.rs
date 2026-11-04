@@ -93,6 +93,74 @@ pub fn reveal(path: &Path) -> std::io::Result<()> {
     command.spawn().map(|_| ())
 }
 
+/// The start folder reaches the dialogs through the environment, never inside a script, so no folder
+/// name can change what the script does.
+const START_VAR: &str = "CLIPSAVE_START";
+
+/// Asks the person to choose a folder with the system's own dialog. `Ok(None)` means they cancelled.
+pub fn pick_folder(title: &str, start: &Path) -> Result<Option<PathBuf>, String> {
+    let attempts: Vec<Command> = if cfg!(target_os = "macos") {
+        let mut osascript = Command::new("osascript");
+        osascript.args([
+            "-e",
+            "tell me to activate",
+            "-e",
+            &format!(
+                "POSIX path of (choose folder with prompt \"{}\" default location (POSIX file (system attribute \"{START_VAR}\")))",
+                title.replace(['"', '\\'], "")
+            ),
+        ]);
+        vec![osascript]
+    } else if cfg!(windows) {
+        let mut powershell = Command::new("powershell");
+        powershell.args([
+            "-NoProfile",
+            "-STA",
+            "-Command",
+            &format!(
+                "Add-Type -AssemblyName System.Windows.Forms; \
+                 $owner = New-Object System.Windows.Forms.Form -Property @{{TopMost = $true}}; \
+                 $dialog = New-Object System.Windows.Forms.FolderBrowserDialog; \
+                 $dialog.Description = '{}'; $dialog.SelectedPath = $env:{START_VAR}; \
+                 if ($dialog.ShowDialog($owner) -eq 'OK') {{ $dialog.SelectedPath }} else {{ exit 1 }}",
+                title.replace('\'', "")
+            ),
+        ]);
+        hide_window(&mut powershell);
+        vec![powershell]
+    } else {
+        let mut zenity = Command::new("zenity");
+        zenity
+            .args([
+                "--file-selection",
+                "--directory",
+                "--title",
+                title,
+                "--filename",
+            ])
+            .arg(start.join(""));
+        let mut kdialog = Command::new("kdialog");
+        kdialog
+            .args(["--title", title, "--getexistingdirectory"])
+            .arg(start);
+        vec![zenity, kdialog]
+    };
+    for mut command in attempts {
+        let output = match command
+            .env(START_VAR, start)
+            .stdin(std::process::Stdio::null())
+            .output()
+        {
+            Ok(output) => output,
+            // Not installed: try the next one.
+            Err(_) => continue,
+        };
+        let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        return Ok((output.status.success() && !text.is_empty()).then(|| PathBuf::from(text)));
+    }
+    Err("No folder picker on this computer. Type the folder's path instead.".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

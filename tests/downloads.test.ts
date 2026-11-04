@@ -110,6 +110,33 @@ describe('Downloads', () => {
     expect(kept.some((d) => d.id === 'old-29')).toBe(false);
   });
 
+  it('never drops unfinished jobs, however many a playlist adds', async () => {
+    const old = Array.from({ length: 10 }, (_, i) => item(`old-${i}`, 'done'));
+    const { downloads, start } = await setup(old);
+    await downloads.addMany(Array.from({ length: 50 }, (_, i) => item(`list-${i}`)));
+    const kept = await readDownloads();
+    expect(kept.filter((d) => d.id.startsWith('list-'))).toHaveLength(50);
+    expect(kept.some((d) => d.id.startsWith('old-'))).toBe(false);
+    // A playlist starts in its own order.
+    expect(start.mock.calls.map(([i]) => i.id)).toEqual(['list-0', 'list-1', 'list-2']);
+  });
+
+  it('cancels everything unfinished at once and keeps finished jobs', async () => {
+    const { downloads, stop } = await setup([item('done', 'done')]);
+    await downloads.addMany(['a', 'b', 'c', 'd'].map((id) => item(id)));
+    await downloads.cancelAll();
+    expect(stop.mock.calls.map(([id]) => id).sort()).toEqual(['a', 'b', 'c']);
+    expect(Object.keys(await statuses())).toEqual(['done']);
+    expect(downloads.busy).toBe(false);
+  });
+
+  it('finds the jobs of one playlist', async () => {
+    const { downloads } = await setup();
+    const playlist = { id: 'p', title: 'Mix' };
+    await downloads.addMany([{ ...item('a'), playlist }, item('b'), { ...item('c'), playlist }]);
+    expect(downloads.inPlaylist('p').map((d) => d.id)).toEqual(['c', 'a']);
+  });
+
   it('shows the number of active jobs on the toolbar button', async () => {
     const { downloads } = await setup();
     await downloads.add(item('a'));
