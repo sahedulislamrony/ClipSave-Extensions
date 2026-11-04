@@ -46,4 +46,4 @@ Changes to this policy are listed in [CHANGELOG.md](CHANGELOG.md) and visible in
 
 ## Contact
 
-Questions: **sahedul.dev@gmail.com**, or [open an issue](https://github.com/sahedulislamrony/ClipSave-Extensions/issues).
+Questions: **support@clipsave.link**, or [open an issue](https://github.com/sahedulislamrony/ClipSave-Extensions/issues).
