@@ -23,7 +23,16 @@ const ICONS = {
   close: 'M6.5 6.5l11 11m0-11-11 11',
   retry: 'M4.5 12a7.5 7.5 0 1 0 2.4-5.5M4.5 4.5v4h4',
   folder: 'M4 7.5A1.5 1.5 0 0 1 5.5 6h4l2 2.5h7A1.5 1.5 0 0 1 20 10v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18z',
+  system: 'M4.5 5h15a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM9 20h6m-3-4v4',
+  light: 'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4',
+  dark: 'M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z',
 };
+
+/** The theme button steps through these. Kept in localStorage, which is synchronous, so the popup opens in the right colours. */
+const THEMES = ['system', 'light', 'dark'] as const;
+type Theme = (typeof THEMES)[number];
+const THEME_KEY = 'theme';
+const THEME_LABELS: Record<Theme, string> = { system: 'System', light: 'Light', dark: 'Dark' };
 
 const saveBody = document.querySelector<HTMLElement>('#save-body')!;
 const panelSave = document.querySelector<HTMLElement>('#panel-save')!;
@@ -33,6 +42,7 @@ const tabDownloads = document.querySelector<HTMLElement>('#tab-downloads')!;
 const count = document.querySelector<HTMLElement>('#count')!;
 const form = document.querySelector<HTMLFormElement>('#link-form')!;
 const input = document.querySelector<HTMLInputElement>('#link')!;
+const themeButton = document.querySelector<HTMLButtonElement>('#theme')!;
 
 /** Only for text and attributes: titles and errors come from the web, so nothing here parses HTML. */
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -54,6 +64,37 @@ function icon(name: keyof typeof ICONS): SVGSVGElement {
   path.setAttribute('d', ICONS[name]);
   svg.append(path);
   return svg;
+}
+
+function readTheme(): Theme {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    return THEMES.find((t) => t === saved) ?? 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+let theme = readTheme();
+
+function applyTheme() {
+  if (theme === 'system') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+  const label = `Theme: ${THEME_LABELS[theme]}`;
+  themeButton.title = label;
+  themeButton.ariaLabel = label;
+  themeButton.replaceChildren(icon(theme));
+}
+
+function nextTheme() {
+  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]!;
+  try {
+    if (theme === 'system') localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // Without storage the choice still holds until the popup closes.
+  }
+  applyTheme();
 }
 
 function send<T>(command: Command): Promise<Result<T>> {
@@ -283,6 +324,8 @@ async function readCurrentTab() {
   }
 }
 
+applyTheme();
+themeButton.addEventListener('click', nextTheme);
 tabSave.addEventListener('click', () => showTab('save'));
 tabDownloads.addEventListener('click', () => showTab('downloads'));
 form.addEventListener('submit', (event) => {

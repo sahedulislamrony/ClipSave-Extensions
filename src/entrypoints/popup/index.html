@@ -7,7 +7,32 @@
   </head>
   <body>
     <header class="top">
-      <img src="/icon/48.png" alt="" width="24" height="24" />
+      <svg class="logo" viewBox="326 314 600 600" aria-hidden="true">
+        <defs>
+          <linearGradient id="logo-back" x1="0" y1="0" x2="0.3" y2="1">
+            <stop offset="0" stop-color="var(--logo-back-top)" />
+            <stop offset="1" stop-color="var(--logo-back-bottom)" />
+          </linearGradient>
+          <linearGradient id="logo-front" x1="0" y1="0.2" x2="1" y2="0.7">
+            <stop offset="0" stop-color="var(--logo-front-light)" />
+            <stop offset="0.55" stop-color="var(--logo-front-mid)" />
+            <stop offset="1" stop-color="var(--logo-front-dark)" />
+          </linearGradient>
+          <linearGradient id="logo-curl" x1="0.2" y1="0" x2="0.4" y2="1">
+            <stop offset="0" stop-color="var(--logo-front-dark)" />
+            <stop offset="1" stop-color="var(--logo-glow)" />
+          </linearGradient>
+          <radialGradient id="logo-glow" cx="0" cy="1" r="0.6" gradientTransform="translate(0 1) scale(1.4 0.6) translate(0 -1)">
+            <stop offset="0" stop-color="var(--logo-glow)" />
+            <stop offset="1" stop-color="var(--logo-glow)" stop-opacity="0" />
+          </radialGradient>
+        </defs>
+        <path d="M351.5 533.5Q325 458 399.3 428.3L600.7 347.7Q675 318 701.5 393.5L757.5 552.5Q784 628 709.7 657.7L471.1 753.1Q434 768 420.7 730.3Z" fill="url(#logo-back)" />
+        <path d="M438 770Q420 812 462 832L590 888Q622 900 642 878L712 808L600 760Z" fill="url(#logo-curl)" />
+        <path d="M542.2 472.6Q568 399 644.7 413L842.3 449Q919 463 900.7 538.8L846.3 764.2Q828 840 751.2 826.2L443.9 771.1Q438 770 440 764.3Z" fill="url(#logo-front)" />
+        <path d="M542.2 472.6Q568 399 644.7 413L842.3 449Q919 463 900.7 538.8L846.3 764.2Q828 840 751.2 826.2L443.9 771.1Q438 770 440 764.3Z" fill="url(#logo-glow)" />
+        <path d="M691.7 484.3Q697 465 716.6 468.8L825.4 490.2Q845 494 839.9 513.3L796.6 676.5Q793 690 783.9 679.4L747.1 636.6Q738 626 724.6 630.2L658.4 650.8Q645 655 648.7 641.5Z" fill="#fff" />
+      </svg>
       <span class="brand">ClipSave</span>
       <div class="tabs" role="tablist">
         <button id="tab-save" role="tab" aria-selected="true" aria-controls="panel-save">Save</button>
@@ -15,6 +40,7 @@
           Downloads<span id="count" class="count" hidden></span>
         </button>
       </div>
+      <button id="theme" class="icon-button" type="button"></button>
     </header>
 
     <main>
