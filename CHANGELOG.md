@@ -6,6 +6,21 @@ All notable changes to ClipSave for browsers are documented here. The format fol
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-04
+
+### Added
+- A theme button in the popup steps through **System**, **Light** and **Dark**, and the popup remembers the choice.
+
+### Changed
+- New crimson logo and colours in the popup and the extension icon.
+
+### Fixed
+- The helper installer no longer fills a narrow terminal with rows of `#` while it downloads, and skips the
+  progress bar when there's no terminal.
+- Installing the helper no longer stops at a browser it can't register with, which left later browsers (such as
+  Brave and Firefox on a Mac without Edge) unregistered. It now registers with the browsers that are set up,
+  reports any that fail, and carries on.
+
 ## [1.0.0] - 2026-11-03
 
 ### Added

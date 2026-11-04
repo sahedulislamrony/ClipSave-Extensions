@@ -43,7 +43,7 @@ body:
     attributes:
       label: Versions
       description: The extension version (chrome://extensions or about:addons) and the output of `clipsave-helper --version`, which also lists the tools it found.
-      placeholder: extension 1.0.0, helper 1.0.0
+      placeholder: extension 1.1.0, helper 1.1.0
     validations:
       required: true
   - type: dropdown

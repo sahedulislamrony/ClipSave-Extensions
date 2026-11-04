@@ -1,35 +1,32 @@
-/* Tokens match the website's globals.css. */
+/* Crimson tokens from the logo. Each pair is light, dark; the theme button pins one side via data-theme. */
 :root {
   color-scheme: light dark;
-  --bg: #ffffff;
-  --sunken: #f4f4f6;
-  --line: #ececef;
-  --ink: #0a0a0f;
-  --ink-muted: #6b6b76;
-  --primary: #5b3bf0;
-  --primary-strong: #4a2bd0;
-  --primary-soft: #efebff;
-  --on-primary: #ffffff;
-  --on-primary-soft: #4a2bd0;
-  --danger: #d92d20;
-  --success: #12805c;
+  --bg: light-dark(#ffffff, #140509);
+  --sunken: light-dark(#f9f1f4, #260b15);
+  --line: light-dark(#f1e3e9, #3a1221);
+  --ink: light-dark(#1a0a10, #fbeef2);
+  --ink-muted: light-dark(#76606a, #b896a3);
+  --primary: light-dark(#b5124a, #ff3d7a);
+  --primary-strong: light-dark(#940a3b, #ff6b98);
+  --primary-soft: light-dark(#fdebf1, #3f0d20);
+  --on-primary: light-dark(#ffffff, #2a0010);
+  --on-primary-soft: light-dark(#a00d41, #ff9dbb);
+  --danger: light-dark(#d92d20, #ff7a70);
+  --success: light-dark(#12805c, #4ad3a0);
+  --logo-back-top: light-dark(#df95ae, #c75a82);
+  --logo-back-bottom: light-dark(#f8d3df, #5e1530);
+  --logo-front-light: light-dark(#cc1550, #f0225f);
+  --logo-front-mid: light-dark(#8a0634, #b30c45);
+  --logo-front-dark: light-dark(#4f001b, #6e0628);
+  --logo-glow: light-dark(#ff5c8e, #ff6a98);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0a0a0d;
-    --sunken: #1e1e24;
-    --line: #2a2a31;
-    --ink: #f5f5f7;
-    --ink-muted: #9a9aa5;
-    --primary: #9c88ff;
-    --primary-strong: #b8a9ff;
-    --primary-soft: #231a4a;
-    --on-primary: #120a33;
-    --on-primary-soft: #c9beff;
-    --danger: #ff7a70;
-    --success: #4ad3a0;
-  }
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 * {
@@ -93,6 +90,12 @@ svg {
   padding: 10px 12px;
   background: var(--bg);
   border-bottom: 1px solid var(--line);
+}
+
+.top .logo {
+  width: 26px;
+  height: 26px;
+  stroke: none;
 }
 
 .brand {
