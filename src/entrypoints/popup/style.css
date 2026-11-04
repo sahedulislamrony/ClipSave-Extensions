@@ -228,6 +228,19 @@ main {
   border-radius: var(--r-lg);
 }
 
+/* The install command on one line, so it reads as one thing to paste: it reaches nearly to the card's edges and is
+   set just small enough to fit. A wider system font scrolls sideways instead of wrapping; Copy takes it all anyway. */
+.notice .command.one-line {
+  width: calc(100% + 24px);
+  margin-inline: -12px;
+  padding: 9px 11px;
+  font-size: 10px;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
 .notice h2 {
   font-size: 14px;
   font-weight: 700;

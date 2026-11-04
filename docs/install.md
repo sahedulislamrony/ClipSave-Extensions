@@ -57,14 +57,19 @@ yourself.
 **macOS and Linux**, in Terminal:
 
 ```bash
-curl -fsSL https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest/download/install.sh | sh
+curl -fsSL https://ext.clipsave.link/install.sh | sh
 ```
 
 **Windows**, in PowerShell (Start menu → type *PowerShell*):
 
 ```powershell
-irm https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest/download/install.ps1 | iex
+irm https://ext.clipsave.link/install.ps1 | iex
 ```
+
+`ext.clipsave.link/install.sh` and `install.ps1` serve the newest release's script straight from GitHub, and the
+site counts each run (see [PRIVACY.md](../PRIVACY.md)). To skip the count, use the same script from the release
+itself: `https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest/download/install.sh` (or
+`install.ps1`).
 
 The installer downloads about 110 MB, checks it against the release's published checksums, installs it for
 your user only (no administrator password) and tells your browsers where it is:
@@ -130,13 +135,13 @@ you turn it on.
 **macOS, Linux:**
 
 ```bash
-curl -fsSL https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest/download/install.sh | sh -s -- --uninstall
+curl -fsSL https://ext.clipsave.link/install.sh | sh -s -- --uninstall
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-& ([scriptblock]::Create((irm https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest/download/install.ps1))) -Uninstall
+& ([scriptblock]::Create((irm https://ext.clipsave.link/install.ps1))) -Uninstall
 ```
 
 This removes the helper and unregisters it from your browsers. Then remove the extension from the extensions

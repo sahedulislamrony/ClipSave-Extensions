@@ -3,11 +3,11 @@
 # rights are needed. It also keeps a copy of the extension for Chrome, Edge and Brave next to the helper:
 # load that folder once with "Load unpacked", and ClipSave's Settings can update it in one click.
 #
-#   irm https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest/download/install.ps1 | iex
+#   irm https://ext.clipsave.link/install.ps1 | iex
 #
 # To remove it:
 #
-#   & ([scriptblock]::Create((irm https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest/download/install.ps1))) -Uninstall
+#   & ([scriptblock]::Create((irm https://ext.clipsave.link/install.ps1))) -Uninstall
 #
 # The helper runs it itself for one-click updates, with -FromHelper (quiet), -YtDlpOnly (only replace yt-dlp
 # with its newest release) and -Result <file> ("ok <version>" or "failed <reason>" is written there).

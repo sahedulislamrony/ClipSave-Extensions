@@ -82,6 +82,10 @@ Run one browser with `npm run e2e:chrome` or `npm run e2e:firefox`. Set `CHROME_
 browser isn't in the usual place, and `CLIPSAVE_HELPER` to test a different helper binary (for example one
 installed by `install.sh`). Screenshots land in `e2e/screenshots/`.
 
+`npm run images` retakes the README pictures in `docs/images` from the real Chrome build and helper (build both
+first, as above). It needs the internet: it reads three Blender open movies on YouTube for their titles, sizes and
+thumbnails.
+
 ## Project layout
 
 ```

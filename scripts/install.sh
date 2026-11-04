@@ -4,11 +4,11 @@
 # extension for Chrome, Edge and Brave next to the helper: load that folder once with "Load unpacked", and
 # ClipSave's Settings can update it in one click.
 #
-#   curl -fsSL https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest/download/install.sh | sh
+#   curl -fsSL https://ext.clipsave.link/install.sh | sh
 #
 # To remove it:
 #
-#   curl -fsSL https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest/download/install.sh | sh -s -- --uninstall
+#   curl -fsSL https://ext.clipsave.link/install.sh | sh -s -- --uninstall
 #
 # The helper runs it itself for one-click updates, with:
 #   --from-helper     no terminal: quiet, and the result goes to --result

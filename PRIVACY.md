@@ -2,8 +2,9 @@
 
 *ClipSave for browsers (the browser extension and the ClipSave Helper). Last updated 2026-11-04.*
 
-**ClipSave collects no data.** It has no servers, no account, no analytics, no crash reporting and no ads.
-Nothing about you or what you save is sent to the ClipSave project.
+**The extension and the helper collect no data.** They have no servers, no account, no analytics, no crash reporting
+and no ads, and send nothing about you or what you save to the ClipSave project. The one thing counted is a run of
+the install command, by the ClipSave website (below).
 
 ## What stays on your computer
 
@@ -23,6 +24,12 @@ Nothing about you or what you save is sent to the ClipSave project.
   [yt-dlp](https://github.com/yt-dlp/yt-dlp) connects to that site directly, the same way your browser does when
   you watch it. That site's own privacy policy applies.
 * **The video's thumbnail**, shown in the popup, loads from the website it belongs to.
+* **ext.clipsave.link**, the ClipSave website, when you run the install command the extension shows
+  (`ext.clipsave.link/install.sh` or `install.ps1`). The site sends you the newest installer from GitHub and counts
+  the run: the file name, and the browser or tool, approximate location and a one-way hash of the IP address that
+  asked for it, as its [privacy policy](https://ext.clipsave.link/privacy) describes. Do Not Track and Global
+  Privacy Control turn the count off, and the [install guide](docs/install.md#install-the-helper) gives the GitHub
+  address of the same script, which isn't counted. The extension and the helper never contact the site themselves.
 * **GitHub**, when you run the installer or click **Update** in Settings (to download a release and yt-dlp),
   when you click **Check now** in Settings, and once a day if you turn on **Check automatically** (off until you
   do). A check asks GitHub's public API for the newest ClipSave and yt-dlp version numbers; nothing about you
