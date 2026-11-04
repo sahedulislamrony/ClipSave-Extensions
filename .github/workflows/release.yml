@@ -209,8 +209,8 @@ jobs:
           **Install:** add the extension, then click its button: it shows the one command that installs the helper.
           Full guide: [docs/install.md](https://github.com/$GITHUB_REPOSITORY/blob/v$VERSION/docs/install.md).
 
-          - macOS, Linux: \`curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/latest/download/install.sh | sh\`
-          - Windows (PowerShell): \`irm https://github.com/$GITHUB_REPOSITORY/releases/latest/download/install.ps1 | iex\`
+          - macOS, Linux: \`curl -fsSL https://ext.clipsave.link/install.sh | sh\`
+          - Windows (PowerShell): \`irm https://ext.clipsave.link/install.ps1 | iex\`
 
           Extension: Firefox Add-ons for Firefox (updates itself). Chrome, Edge and Brave: the install command also
           puts the extension next to the helper; load that folder with **Load unpacked** and Settings updates it in

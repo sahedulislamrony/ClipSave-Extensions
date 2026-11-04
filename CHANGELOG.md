@@ -6,6 +6,12 @@ All notable changes to ClipSave for browsers are documented here. The format fol
 
 ## [Unreleased]
 
+### Changed
+- The install command is shorter: `curl -fsSL https://ext.clipsave.link/install.sh | sh` (macOS, Linux) and
+  `irm https://ext.clipsave.link/install.ps1 | iex` (Windows). The site serves the newest release's installer from
+  GitHub and counts each run; the GitHub address still works and isn't counted. See PRIVACY.md.
+- The popup shows the install command on one line.
+
 ## [1.2.0] - 2026-11-04
 
 ### Added

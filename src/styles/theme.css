@@ -218,6 +218,7 @@ svg {
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   font: 12px/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  overflow-wrap: anywhere;
+  /* Wraps at spaces first, so an address stays whole; only a word too long for a line breaks. */
+  overflow-wrap: break-word;
   user-select: all;
 }

@@ -138,7 +138,7 @@ function renderInstall(): HTMLElement {
       getSelection()?.selectAllChildren(command);
     }
   });
-  const command = el('code', { className: 'command' }, step.command);
+  const command = el('code', { className: 'command one-line' }, step.command);
   return el(
     'div',
     { className: 'notice' },

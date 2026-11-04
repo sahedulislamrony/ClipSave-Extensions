@@ -19,7 +19,8 @@
     "postinstall": "wxt prepare",
     "e2e": "node e2e/chrome.mjs && node e2e/firefox.mjs",
     "e2e:chrome": "node e2e/chrome.mjs",
-    "e2e:firefox": "node e2e/firefox.mjs"
+    "e2e:firefox": "node e2e/firefox.mjs",
+    "images": "node e2e/readme-images.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
