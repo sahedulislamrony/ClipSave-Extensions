@@ -85,7 +85,8 @@ release*, and the Release workflow doesn't start.
 | `SHA256SUMS.txt` | checksums of everything above; the installers check the helper against it |
 
 The helper archives have no version in their names, so `releases/latest/download/install.sh` (and `.ps1`)
-always install the newest helper. That's also the command the extension shows.
+always install the newest helper. The command the extension shows, `ext.clipsave.link/install.sh` (and `.ps1`),
+serves the newest release's installer from there.
 
 If the Release run fails after the merge, fix the cause and run it again from **Actions → Release → Run
 workflow** on `main`. It publishes only if `release.json` states a version newer than the latest release, so
