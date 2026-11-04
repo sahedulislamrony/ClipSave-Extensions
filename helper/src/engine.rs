@@ -52,6 +52,11 @@ impl Engine {
         }
     }
 
+    /// The JavaScript runtime's name, as yt-dlp knows it.
+    pub fn js_runtime_name(&self) -> Option<&'static str> {
+        self.js_runtime.as_ref().map(|(name, _)| *name)
+    }
+
     pub fn has_ffmpeg(&self) -> bool {
         self.ffmpeg.is_some()
     }

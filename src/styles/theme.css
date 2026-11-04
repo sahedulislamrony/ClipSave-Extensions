@@ -1,0 +1,223 @@
+/*
+ * Shared by the popup and the Settings page. Crimson tokens from the logo; each pair is light, dark, and
+ * the theme choice pins one side via data-theme.
+ */
+:root {
+  color-scheme: light dark;
+  --bg: light-dark(#ffffff, #140509);
+  --sunken: light-dark(#f9f1f4, #260b15);
+  --raised: light-dark(#ffffff, #43142a);
+  --line: light-dark(#f1e3e9, #3a1221);
+  --ink: light-dark(#1a0a10, #fbeef2);
+  --ink-muted: light-dark(#76606a, #b896a3);
+  --ink-faint: light-dark(#cdb5c0, #6a3a4d);
+  --primary: light-dark(#b5124a, #ff3d7a);
+  --primary-strong: light-dark(#940a3b, #ff6b98);
+  --primary-soft: light-dark(#fdebf1, #3f0d20);
+  --on-primary: light-dark(#ffffff, #2a0010);
+  --on-primary-soft: light-dark(#a00d41, #ff9dbb);
+  --danger: light-dark(#d92d20, #ff7a70);
+  --danger-soft: light-dark(#fdecea, #3d1210);
+  --success: light-dark(#12805c, #4ad3a0);
+  --success-soft: light-dark(#e6f5ef, #0d2a20);
+  --shadow: light-dark(rgb(74 10 34 / 0.12), rgb(0 0 0 / 0.45));
+  --logo-back-top: light-dark(#df95ae, #c75a82);
+  --logo-back-bottom: light-dark(#f8d3df, #5e1530);
+  --logo-front-light: light-dark(#cc1550, #f0225f);
+  --logo-front-mid: light-dark(#8a0634, #b30c45);
+  --logo-front-dark: light-dark(#4f001b, #6e0628);
+  --logo-glow: light-dark(#ff5c8e, #ff6a98);
+  /* Softly rounded, never pill-shaped: tags 6, small controls 8, fields and buttons 10, cards 12. */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 12px;
+  /* Only for things that are round by nature: thin bars and badges. */
+  --r-round: 999px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* The tick drawn on a checked circle, in --on-primary. A data URI can't read a variable, so each theme has one. */
+  --tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6.5 12.5l3.5 3.5 7.5-8' fill='none' stroke='%23ffffff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6.5 12.5l3.5 3.5 7.5-8' fill='none' stroke='%232a0010' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6.5 12.5l3.5 3.5 7.5-8' fill='none' stroke='%232a0010' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+::selection {
+  background: var(--primary-soft);
+  color: var(--ink);
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Buttons */
+
+.link button,
+.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 18px;
+  height: 40px;
+  background: var(--primary);
+  color: var(--on-primary);
+  border-radius: var(--r-md);
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color 150ms var(--ease-out), transform 150ms var(--ease-out);
+}
+
+.link button:hover,
+.primary:hover:not(:disabled) {
+  background: var(--primary-strong);
+}
+
+.primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.primary.wide {
+  width: 100%;
+  height: 46px;
+  font-size: 14px;
+  box-shadow: 0 10px 22px -12px color-mix(in srgb, var(--primary) 80%, transparent);
+}
+
+.primary:disabled {
+  background: var(--sunken);
+  color: var(--ink-muted);
+  box-shadow: none;
+}
+
+.secondary {
+  padding: 6px 14px;
+  background: var(--primary-soft);
+  color: var(--on-primary-soft);
+  border-radius: var(--r-sm);
+  font-weight: 600;
+}
+
+.small-button {
+  flex: none;
+  height: 30px;
+  padding: 0 14px;
+  background: var(--sunken);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.small-button:hover {
+  background: var(--primary-soft);
+  color: var(--on-primary-soft);
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  color: var(--ink-muted);
+}
+
+.icon-button:hover {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.text-button {
+  display: block;
+  margin: 10px auto 0;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.text-button:hover {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.list-actions {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.list-actions .text-button {
+  margin: 0;
+}
+
+.meta {
+  color: var(--ink-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.command {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font: 12px/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+  user-select: all;
+}

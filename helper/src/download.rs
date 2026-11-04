@@ -3,6 +3,7 @@
 use crate::engine::{friendly_error, Engine};
 use crate::platform;
 use crate::protocol::{Outbox, Quality};
+use crate::settings::{self, FolderKind};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs;
@@ -50,6 +51,11 @@ impl Jobs {
         }
     }
 
+    /// Nothing is downloading.
+    pub fn is_idle(&self) -> bool {
+        self.0.lock().unwrap().is_empty()
+    }
+
     pub fn stop_all(&self) {
         for job in self.0.lock().unwrap().values() {
             platform::terminate(job.pid);
@@ -69,19 +75,11 @@ fn partial_root() -> PathBuf {
 }
 
 pub fn video_dir() -> PathBuf {
-    dirs::video_dir()
-        .unwrap_or_else(|| home().join("Movies"))
-        .join("ClipSave")
+    settings::dir(FolderKind::Video)
 }
 
 pub fn audio_dir() -> PathBuf {
-    dirs::audio_dir()
-        .unwrap_or_else(|| home().join("Music"))
-        .join("ClipSave")
-}
-
-fn home() -> PathBuf {
-    dirs::home_dir().unwrap_or_else(std::env::temp_dir)
+    settings::dir(FolderKind::Audio)
 }
 
 pub fn clean_old_partials() {
@@ -108,6 +106,99 @@ pub fn selector(quality: &Quality) -> String {
     }
 }
 
+/// Replaces what no system allows in a file name, and control characters, with `_`.
+fn clean(text: &str, max: usize) -> String {
+    text.chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .take(max)
+        .collect()
+}
+
+/// One usable name: no separators, nothing hidden, nothing a system refuses. `None` when nothing is left.
+fn safe_name(text: &str, max: usize) -> Option<String> {
+    let cleaned = clean(text, max);
+    // Windows drops trailing dots and spaces, and a leading dot hides a file elsewhere.
+    let name = cleaned.trim().trim_matches('.').trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+/// Turns a playlist title into one folder name.
+pub fn folder_name(title: &str) -> Option<String> {
+    safe_name(title, 80)
+}
+
+/// What a person typed as the file name, without the extension, which yt-dlp adds.
+pub fn file_name(text: &str) -> Option<String> {
+    safe_name(text, 150)
+}
+
+/// A playlist number like `07 - `. Kept as given, spaces included, but never holding a path.
+pub fn file_prefix(text: &str) -> String {
+    clean(text, 16).trim_start().to_string()
+}
+
+/// `%` starts a field in a yt-dlp output template, so a literal one is written twice.
+fn literal(text: &str) -> String {
+    text.replace('%', "%%")
+}
+
+/// `name`, or `name (2)`, `name (3)`… when a file of that name is already in `dir`. The extension isn't
+/// known before yt-dlp picks a format, so any file with the same name before its extension counts.
+fn unused_name(dir: &Path, name: &str) -> String {
+    let taken: Vec<String> = fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter_map(|e| {
+                    let path = e.path();
+                    path.file_stem().map(|s| s.to_string_lossy().to_lowercase())
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let free = |candidate: &str| !taken.contains(&candidate.to_lowercase());
+    if free(name) {
+        return name.to_string();
+    }
+    (2..)
+        .map(|n| format!("{name} ({n})"))
+        .find(|candidate| free(candidate))
+        .expect("some number is free")
+}
+
+/// How a download's file is named, before its extension.
+#[derive(Debug, Default, Clone)]
+pub struct Naming {
+    /// A subfolder of the ClipSave folder, for the videos of one playlist.
+    pub folder: Option<String>,
+    /// The file name a person chose. Without one, the video's own title and ID.
+    pub name: Option<String>,
+    /// Put in front of the name, like a playlist number.
+    pub prefix: Option<String>,
+}
+
+/// The `-o` template for a download into `target`.
+fn output_template(target: &Path, naming: &Naming) -> String {
+    let prefix = naming
+        .prefix
+        .as_deref()
+        .map(file_prefix)
+        .unwrap_or_default();
+    match naming.name.as_deref().and_then(file_name) {
+        Some(name) => format!(
+            "{}.%(ext)s",
+            literal(&unused_name(target, &format!("{prefix}{name}")))
+        ),
+        None => format!("{}%(title).100B [%(id)s].%(ext)s", literal(&prefix)),
+    }
+}
+
 pub fn start(
     engine: Arc<Engine>,
     jobs: Jobs,
@@ -115,9 +206,10 @@ pub fn start(
     id: String,
     url: String,
     quality: Quality,
+    naming: Naming,
 ) {
     thread::spawn(move || {
-        let message = match run(&engine, &jobs, &out, &id, &url, &quality) {
+        let message = match run(&engine, &jobs, &out, &id, &url, &quality, &naming) {
             Ok(Some(path)) => json!({ "id": id, "type": "done", "path": path }),
             Ok(None) => return,
             Err(message) => json!({ "id": id, "type": "failed", "message": message }),
@@ -134,10 +226,15 @@ fn run(
     id: &str,
     url: &str,
     quality: &Quality,
+    naming: &Naming,
 ) -> Result<Option<String>, String> {
-    let target = match quality {
+    let base = match quality {
         Quality::Audio { .. } => audio_dir(),
         _ => video_dir(),
+    };
+    let target = match naming.folder.as_deref().and_then(folder_name) {
+        Some(name) => base.join(name),
+        None => base,
     };
     let partial = partial_root().join(id);
     fs::create_dir_all(&target)
@@ -154,7 +251,7 @@ fn run(
         .arg(format!("home:{}", target.display()))
         .arg("--paths")
         .arg(format!("temp:{}", partial.display()))
-        .args(["-o", "%(title).100B [%(id)s].%(ext)s"])
+        .args(["-o", &output_template(&target, naming)])
         .args(["--progress", "--newline"])
         .args(["--print", &format!("before_dl:{START}%(format_id)s|%(filesize,filesize_approx)s|%(title)s")])
         .args(["--print", &format!("after_move:{PATH}%(filepath)s")])
@@ -335,10 +432,16 @@ pub fn reveal(path: &str) -> Result<(), String> {
     let path = Path::new(path)
         .canonicalize()
         .map_err(|_| "This file was moved or deleted.".to_string())?;
-    let allowed = [video_dir(), audio_dir()]
-        .iter()
-        .filter_map(|dir| dir.canonicalize().ok())
-        .any(|dir| path.starts_with(dir));
+    // The defaults stay allowed after a person picks other folders, for what was saved there before.
+    let allowed = [
+        video_dir(),
+        audio_dir(),
+        settings::default_dir(FolderKind::Video),
+        settings::default_dir(FolderKind::Audio),
+    ]
+    .iter()
+    .filter_map(|dir| dir.canonicalize().ok())
+    .any(|dir| path.starts_with(dir));
     if !allowed {
         return Err("This file isn't in a ClipSave folder.".to_string());
     }
@@ -353,6 +456,59 @@ mod tests {
     fn feed(progress: &mut Progress, line: &str) -> f64 {
         progress.last_report = None;
         progress.update(line).unwrap().percent.unwrap()
+    }
+
+    #[test]
+    fn playlist_folders_stay_one_level_inside_the_clipsave_folder() {
+        assert_eq!(folder_name("My mix").as_deref(), Some("My mix"));
+        assert_eq!(folder_name("../../etc").as_deref(), Some("_.._etc"));
+        assert_eq!(folder_name("a/b\\c:d?").as_deref(), Some("a_b_c_d_"));
+        assert_eq!(folder_name(" .hidden. ").as_deref(), Some("hidden"));
+        assert_eq!(folder_name("..").as_deref(), None);
+        assert_eq!(folder_name("   ").as_deref(), None);
+        assert_eq!(folder_name(&"x".repeat(200)).map(|n| n.len()), Some(80));
+    }
+
+    #[test]
+    fn names_files_as_asked_without_overwriting_or_leaving_the_folder() {
+        let dir = std::env::temp_dir().join(format!("clipsave-names-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("Song.mp3"), b"").unwrap();
+        fs::write(dir.join("Song (2).m4a"), b"").unwrap();
+        let named = |name: &str, prefix: Option<&str>| {
+            output_template(
+                &dir,
+                &Naming {
+                    name: Some(name.into()),
+                    prefix: prefix.map(Into::into),
+                    folder: None,
+                },
+            )
+        };
+        assert_eq!(named("Song", None), "Song (3).%(ext)s");
+        assert_eq!(named("song", Some("07 - ")), "07 - song.%(ext)s");
+        assert_eq!(named("100% ../x", None), "100%% .._x.%(ext)s");
+        assert_eq!(
+            output_template(
+                &dir,
+                &Naming {
+                    prefix: Some("3 - ".into()),
+                    ..Naming::default()
+                }
+            ),
+            "3 - %(title).100B [%(id)s].%(ext)s"
+        );
+        assert_eq!(
+            output_template(
+                &dir,
+                &Naming {
+                    name: Some("  ".into()),
+                    ..Naming::default()
+                }
+            ),
+            "%(title).100B [%(id)s].%(ext)s"
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

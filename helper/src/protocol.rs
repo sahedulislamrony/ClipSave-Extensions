@@ -1,6 +1,8 @@
 //! Native messaging: JSON messages, each after a 32-bit length in native byte order.
 //! The message shapes mirror `src/lib/types.ts`. Keep the two in sync.
 
+use crate::settings::FolderKind;
+use crate::update::UpdateKind;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read, Write};
@@ -19,11 +21,23 @@ pub enum Request {
     Inspect {
         id: String,
         url: String,
+        /// Read the playlist a link belongs to, not just the one video it points at.
+        #[serde(default)]
+        playlist: bool,
     },
     Download {
         id: String,
         url: String,
         quality: Quality,
+        /// A subfolder of the ClipSave folder, used for the videos of one playlist.
+        #[serde(default)]
+        folder: Option<String>,
+        /// The file name, without extension. Without it, the video's title and ID.
+        #[serde(default)]
+        name: Option<String>,
+        /// Put in front of the file name, like a playlist number (`07 - `).
+        #[serde(default)]
+        prefix: Option<String>,
     },
     Cancel {
         id: String,
@@ -31,6 +45,23 @@ pub enum Request {
     Reveal {
         id: String,
         path: String,
+    },
+    /// Saves where files of one kind go. No `path` means the default.
+    SetFolder {
+        id: String,
+        kind: FolderKind,
+        #[serde(default)]
+        path: Option<String>,
+    },
+    /// Opens the system's folder dialog, starting at the current folder of that kind.
+    PickFolder {
+        id: String,
+        kind: FolderKind,
+    },
+    /// Runs the installer to update the helper, its tools and the extension folder, or only yt-dlp.
+    Update {
+        id: String,
+        what: UpdateKind,
     },
 }
 
@@ -76,6 +107,27 @@ pub struct MediaInfo {
     pub thumbnail: Option<String>,
     pub duration_sec: Option<u64>,
     pub options: Vec<FormatOption>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistEntry {
+    pub url: String,
+    pub title: String,
+    pub duration_sec: Option<u64>,
+    pub thumbnail: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistInfo {
+    pub url: String,
+    pub title: String,
+    pub uploader: Option<String>,
+    pub thumbnail: Option<String>,
+    /// How many videos the playlist has, when the site says. Can be more than `entries` holds.
+    pub total: Option<u64>,
+    pub entries: Vec<PlaylistEntry>,
 }
 
 /// Reads one message. `Ok(None)` means the browser closed the pipe.
@@ -184,5 +236,25 @@ mod tests {
             }
             other => panic!("unexpected {other:?}"),
         }
+    }
+
+    #[test]
+    fn older_requests_without_the_new_fields_still_parse() {
+        let request: Request = serde_json::from_value(json!({
+            "id": "a", "type": "download", "url": "https://vimeo.com/1", "quality": { "kind": "best" },
+        }))
+        .unwrap();
+        assert!(matches!(request, Request::Download { folder: None, .. }));
+        let request: Request = serde_json::from_value(
+            json!({ "id": "b", "type": "inspect", "url": "https://vimeo.com/1" }),
+        )
+        .unwrap();
+        assert!(matches!(
+            request,
+            Request::Inspect {
+                playlist: false,
+                ..
+            }
+        ));
     }
 }

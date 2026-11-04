@@ -18,14 +18,15 @@ const CLIP = join(ROOT, 'e2e/fixtures/clip.mp4');
 mkdirSync(SCREENSHOTS, { recursive: true });
 
 /**
- * Serves the test clip at /clip.mp4, and at /slow.mp4 slowly enough to cancel mid-download.
+ * Serves the test clip at /clipsave-e2e.mp4, and at /slow.mp4 slowly enough to cancel mid-download. yt-dlp
+ * names the clip after the address, so its files are easy to tell from anything else in the folders.
  * yt-dlp reads both with its generic extractor, so no site or network is involved.
  */
 export async function startServer() {
   const size = statSync(CLIP).size;
   const server = createServer((request, response) => {
     const slow = request.url.startsWith('/slow');
-    if (!request.url.startsWith('/clip.mp4') && !slow) {
+    if (!request.url.startsWith('/clipsave-e2e.mp4') && !slow) {
       response.writeHead(404).end();
       return;
     }
@@ -52,7 +53,7 @@ export async function startServer() {
   });
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   const base = `http://127.0.0.1:${server.address().port}`;
-  return { clip: `${base}/clip.mp4`, slow: `${base}/slow.mp4`, close: () => server.close() };
+  return { clip: `${base}/clipsave-e2e.mp4`, slow: `${base}/slow.mp4`, close: () => server.close() };
 }
 
 const made = [];
@@ -137,10 +138,13 @@ function saveFolders(home) {
   };
 }
 
+/** "clipsave-e2e.mp4", "clipsave-e2e (2).mp3", "clipsave-e2e [clipsave-e2e].mp3": the popup names files by title. */
+const isTestClip = (name) => name.startsWith('clipsave-e2e');
+
 /** The test clip's files the helper saved: only those, so other files in the folders don't count. */
 export function savedFiles(home) {
   const folders = saveFolders(home);
-  const clips = (dirs) => dirs.flatMap(list).filter((name) => name.startsWith('clip ['));
+  const clips = (dirs) => dirs.flatMap(list).filter(isTestClip);
   return { video: clips(folders.video), audio: clips(folders.audio) };
 }
 
@@ -149,7 +153,7 @@ export function removeSavedFiles(home) {
   if (!IS_WINDOWS) return;
   const folders = saveFolders(home);
   for (const dir of [...folders.video, ...folders.audio]) {
-    for (const name of list(dir).filter((n) => n.startsWith('clip ['))) rmSync(join(dir, name), { force: true });
+    for (const name of list(dir).filter(isTestClip)) rmSync(join(dir, name), { force: true });
   }
 }
 

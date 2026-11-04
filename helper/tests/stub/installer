@@ -1,0 +1,17 @@
+#!/bin/sh
+# Stands in for scripts/install.sh in the protocol tests: writes the result the real one would.
+result=""
+what=all
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --result) shift; result=$1 ;;
+    --ytdlp-only) what=ytdlp ;;
+  esac
+  shift
+done
+sleep 0.3
+if [ "$what" = ytdlp ]; then
+  echo "ok yt-dlp 2099.02.02" > "$result"
+else
+  echo "ok clipsave-helper 9.9.9" > "$result"
+fi

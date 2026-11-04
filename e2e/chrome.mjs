@@ -73,22 +73,24 @@ try {
   await results.step('popup connects to the helper', () =>
     waitFor(page, () => document.querySelector('#save-body')?.innerText.includes('Open a page'), 20000));
 
-  await results.step('refuses YouTube links (Chrome Web Store rule)', async () => {
-    for (const url of ['https://www.youtube.com/watch?v=x', 'https://youtu.be/x', 'https://music.youtube.com/watch?v=x']) {
-      await find(page, url);
-      await waitFor(page, () => document.querySelector('#save-body').innerText.includes("can't save from YouTube"), 5000);
-    }
-    await page.screenshot({ path: join(SCREENSHOTS, 'chrome-youtube-blocked.png') });
+  await results.step('lets YouTube links through to the helper', async () => {
+    await find(page, 'https://www.youtube.com/watch?v=jNQXAC9IVRw');
+    await waitFor(page, () => !!(document.querySelector('#download') || document.querySelector('.notice')), 90000);
+    const shown = await text(page, '#save-body');
+    if (/can't save from YouTube/i.test(shown)) throw new Error(shown);
+    await page.screenshot({ path: join(SCREENSHOTS, 'chrome-youtube.png') });
+    // Reaching YouTube depends on the network, so either result is fine as long as the build didn't refuse it.
+    return shown;
   });
 
   await results.step('reads a video link', async () => {
     await find(page, server.clip);
-    await page.waitForSelector('.option', { timeout: 60000 });
+    await page.waitForSelector('#download', { timeout: 60000 });
     return text(page, '#save-body');
   });
 
   await results.step('downloads a video into Movies/ClipSave', async () => {
-    await page.click('.option');
+    await page.click('#download');
     await waitFor(page, () => !document.querySelector('#panel-downloads').hidden, 5000);
     await page.waitForSelector('.item.done', { timeout: 60000 });
     await page.screenshot({ path: join(SCREENSHOTS, 'chrome-done.png') });
@@ -106,20 +108,11 @@ try {
     return audio.join(', ');
   });
 
-  await results.step('right-click on a YouTube link is refused too', async () => {
-    const before = await storedCount(worker);
-    await worker.evaluate(() =>
-      chrome.contextMenus.onClicked.dispatch({ menuItemId: 'save-video', pageUrl: 'https://example.com', linkUrl: 'https://youtu.be/x' }, {}),
-    );
-    await sleep(800);
-    if ((await storedCount(worker)) !== before) throw new Error('a download was queued');
-  });
-
   await results.step('cancelling a running download removes it', async () => {
     await page.click('#tab-save');
     await find(page, server.slow);
-    await page.waitForSelector('.option', { timeout: 60000 });
-    await page.click('.option');
+    await page.waitForSelector('#download', { timeout: 60000 });
+    await page.click('#download');
     await page.waitForSelector('.item.running', { timeout: 15000 });
     await page.screenshot({ path: join(SCREENSHOTS, 'chrome-running.png') });
     await page.click('.item.running .icon-button');
@@ -135,6 +128,20 @@ try {
     await page.close();
     await sleep(35000);
     if (helperRunning(`clipsave-helper chrome-extension://${CHROME_ID}`)) throw new Error('still running');
+  });
+
+  // After the idle check: asking the helper restarts its 30-second countdown.
+  await results.step('Settings shows the helper and its tools', async () => {
+    const settings = await browser.newPage();
+    const settingsErrors = [];
+    settings.on('pageerror', (error) => settingsErrors.push(error.message));
+    await settings.goto(`chrome-extension://${CHROME_ID}/options.html`);
+    await waitFor(settings, () => document.querySelector('#about')?.innerText.includes('yt-dlp'), 20000);
+    await settings.screenshot({ path: join(SCREENSHOTS, 'chrome-settings.png'), fullPage: true });
+    const about = await text(settings, '#about .facts');
+    await settings.close();
+    if (settingsErrors.length) throw new Error(settingsErrors.join('; '));
+    return about.split(' | ').slice(8, 12).join(' ');
   });
 
   const unexpected = errors.filter((e) => !/favicon/.test(e));

@@ -69,8 +69,8 @@ The browser tests (`e2e/`) use throwaway browser profiles and a throwaway home f
 own browsers or your Movies folder. On Windows, browsers find the helper only through the registry and the
 helper saves to your real Videos and Music folders, so the tests point the registry at the test helper for the
 run, then put back what was there and delete the test clip's files. A small server on your computer serves the test clip in
-`e2e/fixtures/clip.mp4`, so they don't need the internet, except one Firefox step that tries YouTube and accepts
-either outcome. Before running them:
+`e2e/fixtures/clip.mp4`, so they don't need the internet, except one step in each browser that tries YouTube and
+accepts either outcome. Before running them:
 
 ```bash
 npm run build
@@ -88,7 +88,7 @@ installed by `install.sh`). Screenshots land in `e2e/screenshots/`.
 src/
   entrypoints/background.ts   the background script: queue, helper connection, right-click menu
   entrypoints/popup/          the popup (plain TypeScript and CSS, no framework)
-  lib/                        shared code; lib/variant.ts holds the only per-browser behaviour
+  lib/                        shared code
 public/icon/                  extension icons
 wxt.config.ts                 per-browser manifest settings and zip names
 helper/

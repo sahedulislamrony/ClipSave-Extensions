@@ -23,8 +23,12 @@
 
 ## What it does
 
-- **One click on a video page.** ClipSave reads the page and lists every quality with its file size.
+- **One click on a video page.** ClipSave reads the page and lists every quality with its file size. Switch
+  between Video and Audio, pick one, and click Download.
 - **Video or audio.** Save MP4 video, or MP3 / M4A audio.
+- **YouTube, in every browser.** Chrome, Edge, Brave and Firefox all save from YouTube.
+- **Whole playlists.** Open a playlist, or a video that's part of one, pick a quality and which videos, and
+  save them all. Each playlist gets its own folder.
 - **Right-click to save.** Right-click a page or link and choose **ClipSave → Save video** or **Save audio**.
 - **Keeps working in the background.** Close the popup and the download carries on. Cancel or retry any time.
 - **Private.** No account, no analytics, no servers. Everything runs on your computer.
@@ -50,8 +54,11 @@ The full guide, with every browser and troubleshooting, is in **[docs/install.md
 
 | | Chrome, Edge, Brave | Firefox |
 |---|---|---|
-| YouTube | Not supported (Chrome Web Store rule) | Supported |
+| YouTube videos and playlists | Supported | Supported |
 | Other sites | Supported | Supported |
+
+ClipSave isn't published on the Chrome Web Store, whose rules don't allow YouTube downloads. Install it
+unpacked as described in the install guide.
 
 ## Documentation
 

@@ -22,22 +22,29 @@ That's all. The popup notices the helper as soon as it's installed and carries o
 
 ### Chrome, Edge or Brave
 
-Until ClipSave is on the Chrome Web Store:
+ClipSave is installed unpacked. The easiest way also gives you one-click updates:
 
-1. Download `ClipSave-<version>-chrome-unpacked.zip` from the
-   [latest release](https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest) and unzip it.
-   Keep the folder somewhere permanent, for example in Documents. The browser loads it from there each time.
+1. Run the [install command](#install-the-helper) first. Besides the helper, it puts the extension in a
+   folder next to it and prints where:
+   - macOS: `~/Library/Application Support/ClipSave/extension`
+   - Linux: `~/.local/share/clipsave/extension`
+   - Windows: `%LOCALAPPDATA%\ClipSave\extension`
 2. Open `chrome://extensions` (Chrome), `edge://extensions` (Edge) or `brave://extensions` (Brave).
-3. Turn on **Developer mode** and choose **Load unpacked**, then select the unzipped folder.
+3. Turn on **Developer mode** and choose **Load unpacked**, then select that folder.
 4. Pin ClipSave: click the puzzle-piece icon, then the pin next to ClipSave.
 
-The Chrome version can't save from **YouTube**: the Chrome Web Store doesn't allow it, and this version
-follows the same rule. Other sites work. Use Firefox for YouTube.
+Loaded from that folder, ClipSave updates in one click from **Settings → Updates**. (You can also load
+`ClipSave-<version>-chrome-unpacked.zip` from the [latest release](https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest),
+unzipped into a permanent folder; Settings then shows how to switch to the self-updating folder, keeping your
+downloads and settings.)
+
+ClipSave isn't on the Chrome Web Store, whose rules don't allow YouTube downloads, so loading it unpacked
+is the way to install it. Every browser saves from YouTube, videos and playlists alike.
 
 ### Firefox
 
-- **If the release has a `.xpi` file** (`ClipSave-<version>-firefox.xpi`): open it in Firefox and choose **Add**.
-- **Otherwise**, until ClipSave is on Firefox Add-ons, load it for the current session: download
+- **From Firefox Add-ons:** add ClipSave from its Firefox Add-ons page. Firefox keeps it up to date by itself.
+- **For testing**, load a build for the current session: download
   `ClipSave-<version>-firefox.zip` from the [latest release](https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest),
   unzip it, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on** and select
   `manifest.json`. Firefox removes temporary add-ons when it closes.
@@ -74,21 +81,49 @@ your user only (no administrator password) and tells your browsers where it is:
 ## Use it
 
 - **From a video page:** click the ClipSave button. It reads the page and lists the qualities with their sizes.
-  Click one to save it.
+  Change the **File name** if you like (it starts as the video's title), switch between **Video** and **Audio**,
+  pick a quality (1080p and up are tagged **HD**, 2160p **4K**) and click **Download**. ClipSave never replaces a
+  file: a second "Song" is saved as "Song (2)".
 - **From a link:** paste any video link into the box at the top and press **Find**.
+- **Playlists:** open a playlist page (or paste its link) and ClipSave lists its videos. On a video that's part
+  of a playlist, choose **Save the whole playlist**. Rename the **Folder name** if you like, choose how files are
+  numbered (**1 → N** puts "01 - " in front of the first video, **N → 1** counts down, **None** leaves names
+  as they are), pick Video or Audio and a quality, untick any videos you don't want, and click **Download**. Sizes there are estimates (marked ≈) from each video's length. Each video downloads on its own, three at a time, into a folder named after the playlist. Very long
+  playlists show their first 1000 videos.
 - **Right-click:** on a page or a link, choose **ClipSave → Save video** (best quality) or **Save audio (MP3)**.
 - **Downloads tab:** shows progress. Use **✕** to cancel, **↻** to retry a stopped download, and the folder
-  icon to show the file. Downloads continue with the popup closed, and the toolbar button shows how many are
+  icon to show the file. **Cancel all** stops everything still waiting or running. Downloads continue with the popup closed, and the toolbar button shows how many are
   running.
 
-Files are saved to **ClipSave** folders inside your Videos (Movies on macOS) and Music folders.
+Files are saved to **ClipSave** folders inside your Videos (Movies on macOS) and Music folders, or the folders
+you choose in Settings. Playlist videos go into a folder of their own inside it:
+`<video or audio folder>/<playlist name>/07 - <video title>.mp4`.
+
+## Settings
+
+Click the gear in the popup, or **Extension options** on the extensions page. Settings opens in its own tab:
+
+- **Updates:** **Check for updates** compares your extension and helper with the newest release and shows how
+  to update either one.
+- **Save folders:** choose separate folders for videos and audio with **Browse…**, or type a full path and press
+  Return. **Use default** goes back to the ClipSave folders.
+- **Appearance:** System, Light or Dark, for the popup too.
+- **About:** versions, where the helper and its tools are, and **Copy details** for bug reports.
+- **Help and feedback:** this guide, bug reports (with your versions filled in), feature requests, the privacy
+  policy, release notes and the source code.
 
 ## Update
 
-- **Helper:** run the install command again. It replaces the helper and its tools with the newest release. Do
-  this first if a site stops working.
-- **Extension:** download the new zip, replace the old folder's contents, and click the reload icon on ClipSave
-  in the extensions page.
+**Settings → Updates** shows whether anything is out of date. Turn on **Check automatically** to have
+ClipSave look once a day and tell you (in the popup, and once per version as a notification); it's off until
+you turn it on.
+
+- **One click:** **Update ClipSave** downloads the newest release, checks it against its published checksums,
+  and replaces the helper, its tools and, on Chrome, Edge and Brave loaded from the helper's folder, the
+  extension, which then restarts by itself. **Update yt-dlp** replaces only yt-dlp, which sites change for
+  most often, from yt-dlp's own newest release. Updates wait until no download is running.
+- **Firefox** updates the extension from Firefox Add-ons by itself, usually within a day.
+- **By hand**, any time: run the install command again. It does the same as **Update ClipSave**.
 
 ## Remove
 
@@ -112,7 +147,6 @@ page. Your saved videos are not touched.
 | What you see | What to do |
 |---|---|
 | **One more step** stays after installing | Check the installer finished with **Done**. If the browser was already open when you installed, close the popup and open it again. |
-| **Chrome Web Store rules don't allow YouTube downloads** | Expected in Chrome, Edge and Brave. Use Firefox for YouTube. |
 | **No video found on this page** | yt-dlp doesn't recognise a video there. Try the video's own page or link rather than a page that embeds it. |
 | **This post needs a signed-in account** | Private posts (often Instagram or Facebook) need a login, which this version doesn't support yet. |
 | **No connection** | Check your internet connection and try again. |

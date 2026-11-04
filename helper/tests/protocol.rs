@@ -34,12 +34,18 @@ impl Helper {
             NEXT.fetch_add(1, Ordering::SeqCst)
         ));
         std::fs::create_dir_all(&home).unwrap();
+        Helper::start_in(home)
+    }
+
+    /// Another helper on the same home folder, as when the browser starts a new one.
+    fn start_in(home: PathBuf) -> Helper {
         let stub = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/stub");
         let mut child = Command::new(env!("CARGO_BIN_EXE_clipsave-helper"))
             .arg("chrome-extension://test/")
             .env("HOME", &home)
             .env("XDG_CACHE_HOME", home.join(".cache"))
-            .env("CLIPSAVE_ENGINE_DIR", stub)
+            .env("CLIPSAVE_ENGINE_DIR", &stub)
+            .env("CLIPSAVE_INSTALLER", stub.join("installer"))
             .env("PATH", "/usr/bin:/bin")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -142,6 +148,212 @@ fn reads_qualities_for_the_picker() {
         .collect();
     assert_eq!(labels, ["720p", "360p", "MP3 audio", "M4A audio"]);
     assert_eq!(media["options"][0]["sizeBytes"], 3500);
+    helper.finish();
+}
+
+#[test]
+fn reads_a_playlist_link_as_a_list_of_videos() {
+    let mut helper = Helper::start();
+    helper.send(
+        json!({ "id": "p", "type": "inspect", "url": "https://example.com/playlist?list=x" }),
+    );
+    let reply = helper.next("p");
+    assert_eq!(reply["type"], "info");
+    let playlist = &reply["playlist"];
+    assert_eq!(playlist["title"], "Stub list");
+    assert_eq!(playlist["total"], 3);
+    let titles: Vec<&str> = playlist["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(titles, ["One", "Three"]);
+    assert_eq!(playlist["entries"][0]["durationSec"], 30);
+    helper.finish();
+}
+
+#[test]
+fn reads_the_playlist_a_video_belongs_to_only_when_asked() {
+    let mut helper = Helper::start();
+    let url = "https://example.com/video?list=x";
+    helper.send(json!({ "id": "v", "type": "inspect", "url": url }));
+    assert!(helper.next("v")["media"].is_object());
+    helper.send(json!({ "id": "l", "type": "inspect", "url": url, "playlist": true }));
+    assert_eq!(helper.next("l")["playlist"]["title"], "Stub list");
+    helper.finish();
+}
+
+#[test]
+fn saves_playlist_videos_into_their_own_folder() {
+    let mut helper = Helper::start();
+    helper.send(json!({
+        "id": "job-list", "type": "download", "url": "https://example.com/video?n=1",
+        "quality": { "kind": "best" }, "folder": "../Stub: list",
+    }));
+    let path = helper.until("job-list", "done").last().unwrap()["path"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    helper.send(json!({ "id": "h", "type": "hello" }));
+    let video_dir = helper.next("h")["helper"]["videoDir"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        Path::new(&path).parent().unwrap(),
+        Path::new(&video_dir).join("_Stub_ list")
+    );
+    helper.finish();
+}
+
+#[test]
+fn says_what_it_can_do_and_where_it_saves() {
+    let mut helper = Helper::start();
+    helper.send(json!({ "id": "h", "type": "hello" }));
+    let info = &helper.next("h")["helper"];
+    let features: Vec<&str> = info["features"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f.as_str().unwrap())
+        .collect();
+    assert!(features.contains(&"folders"), "{features:?}");
+    assert_eq!(info["videoDir"], info["defaultVideoDir"]);
+    assert!(info["path"].as_str().unwrap().contains("clipsave-helper"));
+    helper.finish();
+}
+
+#[test]
+fn saves_into_the_folder_chosen_in_settings_until_it_is_reset() {
+    let mut helper = Helper::start();
+    let chosen = helper.home.join("Chosen videos");
+
+    helper
+        .send(json!({ "id": "bad", "type": "setFolder", "kind": "video", "path": "relative/dir" }));
+    assert_eq!(helper.next("bad")["type"], "error");
+
+    helper.send(json!({ "id": "s", "type": "setFolder", "kind": "video", "path": chosen }));
+    let reply = helper.next("s");
+    assert_eq!(reply["type"], "folder");
+    let saved_dir = PathBuf::from(reply["path"].as_str().unwrap());
+    assert!(saved_dir.is_dir());
+
+    helper.send(json!({ "id": "job-c", "type": "download", "url": "https://example.com/video", "quality": { "kind": "best" } }));
+    let path = helper.until("job-c", "done").last().unwrap()["path"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(Path::new(&path).parent().unwrap(), saved_dir);
+
+    // Files outside the ClipSave folders still cannot be shown.
+    helper.send(json!({ "id": "r", "type": "reveal", "path": "/etc/hosts" }));
+    assert_eq!(helper.next("r")["type"], "error");
+
+    helper.send(json!({ "id": "reset", "type": "setFolder", "kind": "video", "path": null }));
+    let reset = helper.next("reset")["path"].as_str().unwrap().to_string();
+    helper.send(json!({ "id": "h", "type": "hello" }));
+    let info = helper.next("h")["helper"].clone();
+    assert_eq!(info["videoDir"], reset.as_str());
+    assert_eq!(info["videoDir"], info["defaultVideoDir"]);
+    helper.finish();
+}
+
+#[test]
+fn names_files_as_asked_and_never_overwrites_one() {
+    let mut helper = Helper::start();
+    let save = |helper: &mut Helper, id: &str, naming: Value| {
+        let mut request = json!({ "id": id, "type": "download", "url": "https://example.com/video", "quality": { "kind": "best" } });
+        request
+            .as_object_mut()
+            .unwrap()
+            .extend(naming.as_object().unwrap().clone());
+        helper.send(request);
+        let path = helper.until(id, "done").last().unwrap()["path"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        Path::new(&path)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string()
+    };
+    assert_eq!(
+        save(&mut helper, "job-n1", json!({ "name": "My 100% clip" })),
+        "My 100% clip.mp4"
+    );
+    assert_eq!(
+        save(&mut helper, "job-n2", json!({ "name": "My 100% clip" })),
+        "My 100% clip (2).mp4"
+    );
+    assert_eq!(
+        save(
+            &mut helper,
+            "job-n3",
+            json!({ "name": "Track", "prefix": "07 - ", "folder": "Mix" })
+        ),
+        "07 - Track.mp4"
+    );
+    assert_eq!(
+        save(&mut helper, "job-n4", json!({ "prefix": "08 - " })),
+        "08 - Stub clip [stub].mp4"
+    );
+    assert_eq!(
+        save(&mut helper, "job-n5", json!({})),
+        "Stub clip [stub].mp4"
+    );
+    helper.finish();
+}
+
+#[test]
+fn a_full_update_runs_the_installer_then_leaves_for_the_new_helper() {
+    let mut helper = Helper::start();
+    helper.send(json!({ "id": "u", "type": "update", "what": "all" }));
+    assert_eq!(helper.next("u")["type"], "updating");
+    // The helper exits once the installer is done, so the browser starts the new one.
+    let started = std::time::Instant::now();
+    while helper.child.try_wait().unwrap().is_none() {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the helper didn't leave"
+        );
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    // The next helper says how the update ended.
+    let home = helper.home.clone();
+    let mut next = Helper::start_in(home);
+    next.send(json!({ "id": "h", "type": "hello" }));
+    let info = next.next("h")["helper"].clone();
+    assert_eq!(info["lastUpdate"]["ok"], true);
+    assert_eq!(info["lastUpdate"]["message"], "clipsave-helper 9.9.9");
+    next.finish();
+}
+
+#[test]
+fn a_yt_dlp_update_keeps_the_helper_running() {
+    let mut helper = Helper::start();
+    helper.send(json!({ "id": "u", "type": "update", "what": "ytdlp" }));
+    assert_eq!(helper.next("u")["type"], "updating");
+    thread::sleep(Duration::from_millis(900));
+    helper.send(json!({ "id": "h", "type": "hello" }));
+    assert_eq!(
+        helper.next("h")["helper"]["lastUpdate"]["message"],
+        "yt-dlp 2099.02.02"
+    );
+    helper.finish();
+}
+
+#[test]
+fn will_not_update_in_the_middle_of_a_download() {
+    let mut helper = Helper::start();
+    helper.send(json!({ "id": "job-busy", "type": "download", "url": "https://example.com/slow", "quality": { "kind": "best" } }));
+    assert_eq!(helper.next("job-busy")["type"], "title");
+    helper.send(json!({ "id": "u", "type": "update", "what": "all" }));
+    let reply = helper.next("u");
+    assert_eq!(reply["type"], "error");
+    assert_eq!(reply["message"], "Finish or cancel your downloads first.");
     helper.finish();
 }
 

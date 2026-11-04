@@ -77,9 +77,10 @@ release*, and the Release workflow doesn't start.
 | `clipsave-helper-linux-x86_64.tar.gz` | the helper for 64-bit Linux, with its tools |
 | `clipsave-helper-windows-x86_64.zip` | the helper for 64-bit Windows, with its tools |
 | `ClipSave-x.y.z-chrome-unpacked.zip` | Chrome, Edge, Brave: **Load unpacked** (fixed ID that matches the helper) |
-| `ClipSave-x.y.z-chrome.zip` | upload to the Chrome Web Store (no development key) |
+| `ClipSave-x.y.z-chrome.zip` | the Chrome build without the development key; not published, since the Chrome Web Store doesn't allow YouTube downloads |
 | `ClipSave-x.y.z-firefox.zip` | upload to Firefox Add-ons, or load temporarily |
-| `ClipSave-x.y.z-firefox.xpi` | signed Firefox add-on, only when the AMO secrets are set |
+| `ClipSave-x.y.z-firefox.xpi` | signed Firefox add-on, only with `AMO_CHANNEL` set to `unlisted` |
+| `clipsave-extension-chromium.tar.gz` | the unpacked Chrome build again, for the installers: they keep it next to the helper, where one-click updates replace it |
 | `ClipSave-x.y.z-sources.zip` | the source code Firefox Add-ons asks for |
 | `SHA256SUMS.txt` | checksums of everything above; the installers check the helper against it |
 
@@ -94,16 +95,27 @@ running it by hand can't publish the same version twice. No tag exists until it 
 
 Releases on GitHub are automatic. Store listings are done by hand.
 
-- **Chrome Web Store:** upload `ClipSave-x.y.z-chrome.zip`. After the first upload, add the listing's ID to
-  `CHROME_IDS` in `helper/src/install.rs` and release a new helper. Without that, the helper refuses the store
-  version. Users must still install the helper; link [docs/install.md](install.md#install-the-helper) in the
-  listing.
-- **Firefox Add-ons:** upload `ClipSave-x.y.z-firefox.zip` and, when asked for source code,
-  `ClipSave-x.y.z-sources.zip`. To get a signed `.xpi` on every GitHub release without a public listing, create
-  API keys at [addons.mozilla.org/developers/addon/api/key](https://addons.mozilla.org/developers/addon/api/key/)
-  and add them as the `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` repository secrets.
+- **Chrome Web Store:** not used. Every build saves from YouTube, which the store's rules don't allow, so
+  Chrome, Edge and Brave users load `ClipSave-x.y.z-chrome-unpacked.zip`.
+- **Firefox Add-ons**, the one store ClipSave is on. Firefox updates everyone who installed it there by
+  itself, once Mozilla approves each version.
+  1. **Once, by hand:** submit `ClipSave-x.y.z-firefox.zip` at
+     [addons.mozilla.org/developers](https://addons.mozilla.org/developers/) as a listed add-on, with
+     `ClipSave-x.y.z-sources.zip` when asked for source code, and fill in the listing (description,
+     screenshots, the privacy policy).
+  2. **Then every release does it:** create API keys at
+     [addons.mozilla.org/developers/addon/api/key](https://addons.mozilla.org/developers/addon/api/key/) and
+     add them as the `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` repository secrets. The Release workflow submits
+     each new version to the listing with its source code. It doesn't wait for the review.
+  - The version must be new each time; AMO refuses one it has seen.
+  - To sign without a public listing instead (a `.xpi` attached to each GitHub release, which doesn't update
+    itself), set the repository variable `AMO_CHANNEL` to `unlisted`.
+- **Chrome, Edge, Brave:** no store. The installers keep the extension next to the helper, and Settings
+  updates it in one click; see [install.md](install.md#chrome-edge-or-brave).
+- **yt-dlp** doesn't need a ClipSave release to stay current: one-click updates and the installers fetch
+  yt-dlp's newest release, checked against its published checksums.
 
-Both stores need a privacy policy link: use [PRIVACY.md](../PRIVACY.md).
+The Firefox listing needs a privacy policy link: use [PRIVACY.md](../PRIVACY.md).
 
 ## One-time repository setup
 

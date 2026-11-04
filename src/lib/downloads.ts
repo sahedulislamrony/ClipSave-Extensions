@@ -2,6 +2,7 @@ import { browser } from 'wxt/browser';
 import type { DownloadItem } from './types';
 
 const KEY = 'downloads';
+/** Finished downloads kept in the list. Unfinished ones always stay, however many a playlist adds. */
 const MAX_KEPT = 30;
 const MAX_ACTIVE = 3;
 
@@ -30,9 +31,24 @@ export class Downloads {
     return this.items.some(isActive);
   }
 
+  find(id: string): DownloadItem | undefined {
+    return this.items.find((item) => item.id === id);
+  }
+
+  /** The downloads that came from one playlist, newest first. */
+  inPlaylist(playlistId: string): DownloadItem[] {
+    return this.items.filter((item) => item.playlist?.id === playlistId);
+  }
+
   async add(item: DownloadItem) {
+    return this.addMany([item]);
+  }
+
+  /** `items` in the order they should start. */
+  async addMany(items: DownloadItem[]) {
     await this.loaded;
-    this.items = [item, ...this.items].slice(0, MAX_KEPT);
+    this.items = [...[...items].reverse(), ...this.items];
+    this.trim();
     this.pump();
   }
 
@@ -65,6 +81,16 @@ export class Downloads {
     this.pump();
   }
 
+  /** Stops everything that hasn't finished and takes it off the list. */
+  async cancelAll() {
+    await this.loaded;
+    for (const item of this.items) {
+      if (item.status === 'running' || item.status === 'processing') this.stop(item.id);
+    }
+    this.items = this.items.filter((item) => !isActive(item));
+    this.commit();
+  }
+
   async clearFinished() {
     await this.loaded;
     this.items = this.items.filter(isActive);
@@ -77,6 +103,11 @@ export class Downloads {
       isActive(item) ? { ...item, status: 'interrupted', speedBytes: null, etaSec: null } : item,
     );
     this.commit();
+  }
+
+  private trim() {
+    let room = MAX_KEPT - this.items.filter(isActive).length;
+    this.items = this.items.filter((item) => isActive(item) || room-- > 0);
   }
 
   private pump() {
