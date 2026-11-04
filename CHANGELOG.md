@@ -6,6 +6,45 @@ All notable changes to ClipSave for browsers are documented here. The format fol
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-04
+
+### Added
+- **YouTube in every browser.** Chrome, Edge and Brave now save from YouTube, like Firefox. ClipSave isn't
+  published on the Chrome Web Store, so its rule against YouTube downloads no longer applies.
+- **Playlist downloads.** A playlist link lists its videos; a video that's part of a playlist offers **Save the
+  whole playlist**. Pick a quality and which videos, and each one downloads on its own into a folder named after
+  the playlist, with one notification when the playlist is done.
+- **Name your files.** A single video's file name starts as its title and can be changed before saving. A
+  playlist's folder name can be changed too, and its files numbered **1 → N**, **N → 1** or not at all
+  ("07 - Title", padded like the app), with the first file name previewed. Files go to
+  `<video or audio folder>/<playlist name>/`. A file is never replaced: a second "Song" becomes "Song (2)".
+- **One-click updates.** Settings → Updates downloads the newest release, checks it against its published
+  checksums and replaces the helper, its tools and, on Chrome, Edge and Brave, the extension, which restarts by
+  itself. The install command now keeps the extension next to the helper for that: load it from there once.
+  **Update yt-dlp** brings yt-dlp's newest release between ClipSave releases. Updates wait for running
+  downloads.
+- **Check for updates automatically**, once a day, as an option in Settings (off until turned on). A new
+  version shows in the popup and as one notification.
+- Releases are submitted to the Firefox Add-ons listing, so Firefox keeps ClipSave up to date.
+- **Settings**, in its own tab (the gear in the popup): check for updates to the extension and the helper, choose
+  separate folders for videos and audio, pick the theme, see versions and where the helper's tools are, and
+  find help, the privacy policy, bug reports and feature requests.
+- **Cancel all** in the Downloads tab.
+
+### Changed
+- A new popup design that matches the ClipSave app: a **Video | Audio** switch, quality rows with **HD** and
+  **4K** tags and their sizes, a tick on the chosen row, and one **Download** button. Playlists list each video
+  with its thumbnail and length, and show an approximate size (≈) for every quality and for the whole selection.
+  Downloads show as cards with the video's thumbnail. Corners are softly rounded throughout, never pill-shaped.
+- A single video is saved under its title, "Title.mp4", instead of "Title [id].mp4". Right-click saves keep the
+  old name.
+- The install command also installs the extension for Chrome, Edge and Brave next to the helper, and fetches
+  yt-dlp's newest release instead of keeping the one the release was built with.
+
+### Fixed
+- Adding many downloads at once no longer drops waiting ones from the list: only finished downloads past the
+  newest 30 are removed.
+
 ## [1.1.0] - 2026-11-04
 
 ### Added
