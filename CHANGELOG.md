@@ -6,6 +6,25 @@ All notable changes to ClipSave for browsers are documented here. The format fol
 
 ## [Unreleased]
 
+### Added
+- **The installer asks which browsers you use**, with the ones on your computer already ticked, and connects
+  just those. `--browsers chrome,firefox` or `--all` (`-Browsers`, `-All` on Windows) skip the question. It
+  remembers the choice for the next run and for one-click updates.
+- **A `clipsave-helper` command.** The installer adds it to your `PATH`; `--no-modify-path` (`-NoModifyPath`)
+  leaves `PATH` alone. The helper takes `--install --browsers <list>`, `--install --all` and `--help`.
+
+### Changed
+- **The installer shows every step as it goes**, in color, with a progress bar for each download, so it never
+  looks stuck. It ends with how to add the extension to each browser you picked, skipping browsers that
+  already have it, and copies the extension's folder path for **Load unpacked**.
+- On Windows the installer unpacks with Windows' own `tar`, which is much faster than before.
+
+- **Settings → Help and feedback** and the popup's Help link open ClipSave's website (install steps, bug and feature
+  forms, privacy policy, release notes) instead of GitHub. **Report a bug** fills in your versions, browser and system.
+
+### Fixed
+- Running `clipsave-helper` with no options in a terminal shows its help instead of waiting silently.
+
 ## [1.2.1] - 2026-11-04
 
 ### Changed

@@ -4,8 +4,11 @@
  */
 const INSTALLERS = 'https://ext.clipsave.link';
 
-export const HELP_PAGE =
-  'https://github.com/sahedulislamrony/ClipSave-Extensions/blob/main/docs/install.md#install-the-helper';
+/** ClipSave's website, where Settings and the popup send people for help, feedback and release notes. */
+export const SITE = 'https://ext.clipsave.link';
+
+/** The install steps: the command, then adding the extension to each browser. */
+export const HELP_PAGE = `${SITE}/download#install`;
 
 export interface InstallStep {
   /** The app to paste the command into. */

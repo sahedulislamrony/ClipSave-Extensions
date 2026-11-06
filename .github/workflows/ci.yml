@@ -47,6 +47,16 @@ jobs:
       - name: Lint the Firefox build
         run: npm run lint:firefox
 
+      # Both come with GitHub's Ubuntu runners.
+      - name: Check the installers
+        run: |
+          shellcheck -s sh scripts/install.sh
+          pwsh -NoProfile -Command '
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile("scripts/install.ps1", [ref]$null, [ref]$errors) | Out-Null
+            $errors | ForEach-Object { Write-Error "$($_.Extent.StartLineNumber): $($_.Message)" }
+            if ($errors) { exit 1 }'
+
   helper:
     name: Helper (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
