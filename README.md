@@ -61,10 +61,12 @@ curl -fsSL https://ext.clipsave.link/install.sh | sh
 irm https://ext.clipsave.link/install.ps1 | iex
 ```
 
-The installer downloads about 110 MB (the helper, yt-dlp, ffmpeg and QuickJS), checks every file against the
-release's SHA-256 checksums and installs for your user only, with no administrator password. On Chrome, Edge and
-Brave it also keeps a copy of the extension in the helper's folder: load that folder once with **Load unpacked** and
-Settings keeps it up to date.
+The installer asks which browsers you use, downloads about 110 MB (the helper, yt-dlp, ffmpeg and QuickJS) with a
+progress bar, checks every file against the release's SHA-256 checksums and installs for your user only, with no
+administrator password. On Chrome, Edge and Brave it also keeps a copy of the extension in the helper's folder:
+load that folder once with **Load unpacked** and Settings keeps it up to date. It ends by showing how to add the
+extension to each browser you picked, and adds a `clipsave-helper` command to your terminal. Add
+`sh -s -- --browsers chrome,firefox` (or `--all`) to skip the question.
 
 The full guide, with every browser and troubleshooting, is in **[docs/install.md](docs/install.md)**.
 

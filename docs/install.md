@@ -66,6 +66,26 @@ curl -fsSL https://ext.clipsave.link/install.sh | sh
 irm https://ext.clipsave.link/install.ps1 | iex
 ```
 
+It asks which browsers you use, with the ones it found on your computer already ticked: use the arrow keys
+and Space to change the list, then press Return. It then shows each step as it goes, with a progress bar for
+the downloads, and ends with how to add the extension to each browser you picked. Run again, it remembers your
+choice.
+
+To skip the question, name the browsers, or pick every one:
+
+```bash
+curl -fsSL https://ext.clipsave.link/install.sh | sh -s -- --browsers chrome,firefox
+curl -fsSL https://ext.clipsave.link/install.sh | sh -s -- --all
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://ext.clipsave.link/install.ps1))) -Browsers chrome,firefox
+& ([scriptblock]::Create((irm https://ext.clipsave.link/install.ps1))) -All
+```
+
+The browser names are `chrome`, `chromium`, `edge`, `brave` and `firefox`, plus `chrome-canary` on macOS.
+Leaving a browser out of the list disconnects it.
+
 `ext.clipsave.link/install.sh` and `install.ps1` serve the newest release's script straight from GitHub, and the
 site counts each run (see [PRIVACY.md](../PRIVACY.md)). To skip the count, use the same script from the release
 itself: `https://github.com/sahedulislamrony/ClipSave-Extensions/releases/latest/download/install.sh` (or
@@ -79,6 +99,22 @@ your user only (no administrator password) and tells your browsers where it is:
 | macOS | `~/Library/Application Support/ClipSave` |
 | Linux | `~/.local/share/clipsave` |
 | Windows | `%LOCALAPPDATA%\ClipSave` |
+
+### The `clipsave-helper` command
+
+The installer also adds a `clipsave-helper` command you can run in a terminal. On macOS and Linux it's a small
+script in `~/.local/bin`, and the installer adds that folder to your shell's `PATH` (in `~/.zshrc`,
+`~/.bashrc`, `~/.bash_profile`, fish's `conf.d` or `~/.profile`) when it isn't there yet. On Windows the
+helper's folder is added to your user `PATH`. Open a new terminal window for it to work (on Windows it also
+works right away in the PowerShell window you installed from). To leave your `PATH` alone, add
+`--no-modify-path` (`-NoModifyPath` on Windows).
+
+```bash
+clipsave-helper --version                          # its version, and the yt-dlp, ffmpeg and JavaScript runtime it uses
+clipsave-helper --install --browsers chrome,brave  # connect just these browsers
+clipsave-helper --install --all                    # connect every supported browser
+clipsave-helper --help
+```
 
 > **Why a command and not a download?** The helper isn't signed by Apple or Microsoft yet, so a copy
 > downloaded in a browser would be blocked or warned about. Installing from Terminal or PowerShell avoids that.
@@ -144,22 +180,24 @@ curl -fsSL https://ext.clipsave.link/install.sh | sh -s -- --uninstall
 & ([scriptblock]::Create((irm https://ext.clipsave.link/install.ps1))) -Uninstall
 ```
 
-This removes the helper and unregisters it from your browsers. Then remove the extension from the extensions
-page. Your saved videos are not touched.
+This removes the helper, the `clipsave-helper` command (and the line the installer added to your `PATH`) and
+disconnects it from your browsers. Then remove the extension from the extensions page. Your saved videos are
+not touched.
 
 ## Troubleshooting
 
 | What you see | What to do |
 |---|---|
-| **One more step** stays after installing | Check the installer finished with **Done**. If the browser was already open when you installed, close the popup and open it again. |
+| **One more step** stays after installing | Check the installer finished with **ClipSave is installed**, and that it connected the browser you're using (run it again to add one). If the browser was already open when you installed, close the popup and open it again. |
 | **No video found on this page** | yt-dlp doesn't recognise a video there. Try the video's own page or link rather than a page that embeds it. |
 | **This post needs a signed-in account** | Private posts (often Instagram or Facebook) need a login, which this version doesn't support yet. |
 | **No connection** | Check your internet connection and try again. |
 | **This video has no sound to save** | You picked audio for a video without a sound track. Save the video instead. |
 | A site that used to work fails | Run the install command again to get the newest yt-dlp. If it still fails, check [yt-dlp's issues](https://github.com/yt-dlp/yt-dlp/issues). |
+| `clipsave-helper: command not found` | Open a new terminal window. If it still isn't found, add `~/.local/bin` to your `PATH`, or run `clipsave-helper` from the folder it's installed in (see the table above). |
 | Windows: "running scripts is disabled" | Use the `irm … \| iex` command exactly as shown; it doesn't need script permissions. |
 
-To see what the helper found, run `clipsave-helper --version` from its folder. It lists the yt-dlp, ffmpeg
+To see what the helper found, run `clipsave-helper --version`. It lists the yt-dlp, ffmpeg
 and JavaScript runtime it uses. Still stuck? [Open an issue](https://github.com/sahedulislamrony/ClipSave-Extensions/issues/new/choose)
 with your browser, system, that output and what the popup says.
 

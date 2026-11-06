@@ -34,8 +34,13 @@ fn chrome(home: &Path) -> PathBuf {
 }
 
 fn install(home: &Path) -> Output {
+    install_with(home, &[])
+}
+
+fn install_with(home: &Path, options: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_clipsave-helper"))
         .arg("--install")
+        .args(options)
         .env("HOME", home)
         .env_remove("XDG_CONFIG_HOME")
         .output()
@@ -87,5 +92,62 @@ fn fails_when_no_browser_is_set_up() {
 
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("Couldn't register with any browser"));
+    std::fs::remove_dir_all(home).unwrap();
+}
+
+fn firefox_manifest(home: &Path) -> PathBuf {
+    if cfg!(target_os = "macos") {
+        config(home).join("Mozilla/NativeMessagingHosts/link.clipsave.helper.json")
+    } else {
+        home.join(".mozilla/native-messaging-hosts/link.clipsave.helper.json")
+    }
+}
+
+#[test]
+fn registers_with_the_chosen_browsers_only() {
+    let home = home();
+    std::fs::create_dir_all(chrome(&home)).unwrap();
+    assert!(install(&home).status.success());
+
+    // Firefox has never run here, and Chrome is left out: Firefox is registered, Chrome removed.
+    let output = install_with(&home, &["--browsers", "firefox"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success(), "{stdout}");
+    assert!(stdout.contains("Firefox: registered"), "{stdout}");
+    assert!(stdout.contains("Chrome: removed"), "{stdout}");
+    assert!(firefox_manifest(&home).is_file());
+    assert!(!chrome(&home)
+        .join("NativeMessagingHosts/link.clipsave.helper.json")
+        .exists());
+    std::fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn all_registers_with_every_browser() {
+    let home = home();
+
+    let output = install_with(&home, &["--all"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success(), "{stdout}");
+    for browser in ["Chrome", "Edge", "Brave", "Firefox"] {
+        assert!(
+            stdout.contains(&format!("{browser}: registered")),
+            "{stdout}"
+        );
+    }
+    std::fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn refuses_an_unknown_browser() {
+    let home = home();
+
+    let output = install_with(&home, &["--browsers=chrome,netscape"]);
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("netscape"));
+    assert!(!chrome(&home).exists());
     std::fs::remove_dir_all(home).unwrap();
 }

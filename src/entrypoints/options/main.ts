@@ -5,11 +5,11 @@ import '@/styles/theme.css';
 import './style.css';
 import { browser } from 'wxt/browser';
 import { el, icon, type IconName } from '@/lib/dom';
-import { HELP_PAGE, installStep } from '@/lib/install';
+import { HELP_PAGE, installStep, SITE } from '@/lib/install';
 import { applyTheme, onThemeChanged, readTheme, saveTheme, THEME_LABELS, THEMES, type Theme } from '@/lib/theme';
 import type { Command, FolderKind, HelperInfo, Result } from '@/lib/types';
 import { onUpdateStateChanged, readPreferences, readUpdateState, savePreferences } from '@/lib/prefs';
-import { available, extensionAsset, NO_UPDATE_STATE, REPO_URL, type UpdateState } from '@/lib/updates';
+import { available, extensionAsset, NO_UPDATE_STATE, type UpdateState } from '@/lib/updates';
 
 const FIREFOX = import.meta.env.FIREFOX;
 const EXTENSION_VERSION = browser.runtime.getManifest().version;
@@ -154,7 +154,7 @@ function renderUpdates() {
         'div',
         { className: 'actions' },
         asset ? el('a', { className: 'primary', href: asset.url, rel: 'noreferrer' }, icon('download'), `Download ${found.version}`) : null,
-        updates.release ? el('a', { className: 'secondary', href: updates.release.url, target: '_blank', rel: 'noreferrer' }, "What's new", icon('external')) : null,
+        updates.release ? el('a', { className: 'secondary', href: `${SITE}/changelog`, target: '_blank', rel: 'noreferrer' }, "What's new", icon('external')) : null,
       ),
     );
   }
@@ -503,21 +503,24 @@ function renderAbout() {
 
 // Help and feedback
 
+/** The website's bug form, with the versions, browser and system filled in. */
 function bugReportUrl(): string {
-  const url = new URL(`${REPO_URL}/issues/new`);
-  url.searchParams.set('template', 'bug_report.yml');
-  url.searchParams.set('version', `extension ${EXTENSION_VERSION}, helper ${state.helper?.version ?? 'not installed'}`);
+  const url = new URL(`${SITE}/report-bug`);
+  url.searchParams.set('extensionVersion', `${EXTENSION_VERSION}, helper ${state.helper?.version ?? 'not installed'}`);
+  if (state.browserName) url.searchParams.set('browser', state.browserName);
+  const system = [state.os, state.arch].filter(Boolean).join(' · ');
+  if (system) url.searchParams.set('system', system);
   return url.toString();
 }
 
 function renderHelp() {
   const links: [IconName, string, string, string][] = [
-    ['book', 'Install and use', 'Setup, every browser, troubleshooting', HELP_PAGE.replace(/#.*/, '')],
-    ['bug', 'Report a bug', 'Opens a GitHub issue with your versions filled in', bugReportUrl()],
-    ['idea', 'Request a feature', 'Tell us what would make ClipSave better', `${REPO_URL}/issues/new?template=feature_request.yml`],
-    ['shield', 'Privacy policy', 'ClipSave collects no data', `${REPO_URL}/blob/main/PRIVACY.md`],
-    ['refresh', 'Release notes', 'What changed in each version', `${REPO_URL}/blob/main/CHANGELOG.md`],
-    ['code', 'Source code', 'Free and open source, GPL-3.0', REPO_URL],
+    ['book', 'Install and use', 'Setup, every browser, troubleshooting', `${SITE}/download`],
+    ['bug', 'Report a bug', 'Opens the bug form with your versions filled in', bugReportUrl()],
+    ['idea', 'Request a feature', 'Tell us what would make ClipSave better', `${SITE}/request-feature`],
+    ['shield', 'Privacy policy', 'ClipSave collects no data', `${SITE}/privacy`],
+    ['refresh', 'Release notes', 'What changed in each version', `${SITE}/changelog`],
+    ['code', 'Open source', 'Free and open source, GPL-3.0', `${SITE}/open-source`],
   ];
   sections.help.replaceChildren(
     heading('help-title', 'Help and feedback', 'link'),

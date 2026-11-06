@@ -53,11 +53,14 @@ async function open(browser, path, { width, height, dark = false }) {
 const imagesLoaded = (page) =>
   page.waitForFunction(() => [...document.images].every((img) => img.complete), { timeout: 15000 }).catch(() => {});
 
-/** The popup as Chrome shows it: 360 wide, as tall as its content up to the popup's 560. */
-async function shootPopup(page, name) {
+/**
+ * The popup as Chrome shows it: 360 wide, as tall as its content up to the popup's 560. With `full`, always the full
+ * 560, so a shorter screen matches the picker it sits next to in the README.
+ */
+async function shootPopup(page, name, { full = false } = {}) {
   await imagesLoaded(page);
   await new Promise((done) => setTimeout(done, 400)); // let the sliding thumbs and bars settle
-  const height = await page.evaluate(() => Math.ceil(document.body.getBoundingClientRect().height));
+  const height = full ? 560 : await page.evaluate(() => Math.ceil(document.body.getBoundingClientRect().height));
   await page.screenshot({ path: join(IMAGES, name), clip: { x: 0, y: 0, width: 360, height: Math.min(height, 560) } });
   console.log(`  ✓ ${name}`);
 }
@@ -117,7 +120,7 @@ try {
   await worker.evaluate((downloads) => chrome.storage.local.set({ downloads }), downloads);
   await light.click('#tab-downloads');
   await light.waitForSelector('.item.running', { timeout: 5000 });
-  await shootPopup(light, 'popup-downloads.png');
+  await shootPopup(light, 'popup-downloads.png', { full: true });
   await worker.evaluate(() => chrome.storage.local.set({ downloads: [] }));
   await light.close();
 

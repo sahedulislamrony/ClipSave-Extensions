@@ -38,84 +38,103 @@ impl Family {
 /// Where each browser looks: a folder relative to the config folder (macOS, Linux), or a registry key
 /// under HKEY_CURRENT_USER (Windows).
 #[cfg(target_os = "macos")]
-const BROWSERS: &[(&str, Family, &str)] = &[
+const BROWSERS: &[(&str, &str, Family, &str)] = &[
     (
+        "chrome",
         "Chrome",
         Family::Chromium,
         "Google/Chrome/NativeMessagingHosts",
     ),
     (
+        "chrome-canary",
         "Chrome Canary",
         Family::Chromium,
         "Google/Chrome Canary/NativeMessagingHosts",
     ),
     (
+        "chromium",
         "Chromium",
         Family::Chromium,
         "Chromium/NativeMessagingHosts",
     ),
     (
+        "edge",
         "Edge",
         Family::Chromium,
         "Microsoft Edge/NativeMessagingHosts",
     ),
     (
+        "brave",
         "Brave",
         Family::Chromium,
         "BraveSoftware/Brave-Browser/NativeMessagingHosts",
     ),
-    ("Firefox", Family::Firefox, "Mozilla/NativeMessagingHosts"),
+    (
+        "firefox",
+        "Firefox",
+        Family::Firefox,
+        "Mozilla/NativeMessagingHosts",
+    ),
 ];
 
 #[cfg(target_os = "linux")]
-const BROWSERS: &[(&str, Family, &str)] = &[
+const BROWSERS: &[(&str, &str, Family, &str)] = &[
     (
+        "chrome",
         "Chrome",
         Family::Chromium,
         "google-chrome/NativeMessagingHosts",
     ),
     (
+        "chromium",
         "Chromium",
         Family::Chromium,
         "chromium/NativeMessagingHosts",
     ),
     (
+        "edge",
         "Edge",
         Family::Chromium,
         "microsoft-edge/NativeMessagingHosts",
     ),
     (
+        "brave",
         "Brave",
         Family::Chromium,
         "BraveSoftware/Brave-Browser/NativeMessagingHosts",
     ),
     // Firefox keeps its folder in the home folder rather than the config folder: see `manifest_file`.
-    ("Firefox", Family::Firefox, ""),
+    ("firefox", "Firefox", Family::Firefox, ""),
 ];
 
 #[cfg(windows)]
-const BROWSERS: &[(&str, Family, &str)] = &[
+const BROWSERS: &[(&str, &str, Family, &str)] = &[
     (
+        "chrome",
         "Chrome",
         Family::Chromium,
         r"Software\Google\Chrome\NativeMessagingHosts",
     ),
     (
+        "chromium",
         "Chromium",
         Family::Chromium,
         r"Software\Chromium\NativeMessagingHosts",
     ),
     (
+        "edge",
         "Edge",
         Family::Chromium,
         r"Software\Microsoft\Edge\NativeMessagingHosts",
     ),
     (
+        "brave",
         "Brave",
         Family::Chromium,
         r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts",
     ),
     (
+        "firefox",
         "Firefox",
         Family::Firefox,
         r"Software\Mozilla\NativeMessagingHosts",
@@ -142,14 +161,60 @@ fn helper_path() -> io::Result<PathBuf> {
     Ok(plain(&std::env::current_exe()?.canonicalize()?))
 }
 
-/// Registers with every browser that's set up on this computer. One browser refusing (macOS can block a
-/// folder) doesn't stop the others; it only fails when no browser could be registered at all.
-pub fn install() -> io::Result<()> {
+/// The browsers this helper can register with on this system, as `--browsers` names them.
+pub fn browser_ids() -> Vec<&'static str> {
+    targets().iter().map(|(id, ..)| *id).collect()
+}
+
+/// Reads a `--browsers` list such as `chrome,firefox` (`all` means every one). Unknown names are an error.
+pub fn parse_browsers(text: &str) -> Result<Vec<&'static str>, String> {
+    let mut chosen = Vec::new();
+    for name in text
+        .split([',', ' '])
+        .map(|name| name.trim().to_ascii_lowercase())
+        .filter(|name| !name.is_empty())
+    {
+        if name == "all" {
+            return Ok(browser_ids());
+        }
+        match targets().iter().find(|(id, ..)| *id == name) {
+            Some((id, ..)) if !chosen.contains(id) => chosen.push(*id),
+            Some(_) => {}
+            None => {
+                return Err(format!(
+                    "There's no browser called \"{name}\" here. Choose from: {}, or all.",
+                    browser_ids().join(", ")
+                ))
+            }
+        }
+    }
+    if chosen.is_empty() {
+        return Err(format!(
+            "Name at least one browser: {}, or all.",
+            browser_ids().join(", ")
+        ));
+    }
+    Ok(chosen)
+}
+
+/// Registers with the browsers in `only`, and unregisters from the rest, so the list is the whole choice.
+/// Without a list it registers with every browser that's set up on this computer. One browser refusing
+/// (macOS can block a folder) doesn't stop the others; it only fails when no browser could be registered.
+pub fn install(only: Option<&[&str]>) -> io::Result<()> {
     let exe = helper_path()?;
     let mut registered = 0;
-    for &(name, family, place) in targets() {
-        if !installed(family, place)? {
-            continue;
+    for &(id, name, family, place) in targets() {
+        match only {
+            Some(list) if !list.contains(&id) => {
+                if unregister(family, place)? {
+                    println!("{name}: removed");
+                }
+                continue;
+            }
+            // Asked for by name, it's registered even before the browser's first run.
+            Some(_) => {}
+            None if !installed(family, place)? => continue,
+            None => {}
         }
         match register(family, place, &exe) {
             Ok(()) => {
@@ -168,7 +233,7 @@ pub fn install() -> io::Result<()> {
 }
 
 pub fn uninstall() -> io::Result<()> {
-    for &(name, family, place) in targets() {
+    for &(_, name, family, place) in targets() {
         if unregister(family, place)? {
             println!("{name}: removed");
         }
@@ -176,7 +241,7 @@ pub fn uninstall() -> io::Result<()> {
     Ok(())
 }
 
-fn targets() -> &'static [(&'static str, Family, &'static str)] {
+fn targets() -> &'static [(&'static str, &'static str, Family, &'static str)] {
     BROWSERS
 }
 
@@ -308,9 +373,20 @@ mod tests {
 
     #[test]
     fn registers_with_every_supported_browser() {
-        let names: Vec<&str> = targets().iter().map(|(name, ..)| *name).collect();
-        for browser in ["Chrome", "Edge", "Brave", "Firefox"] {
+        let names = browser_ids();
+        for browser in ["chrome", "edge", "brave", "firefox"] {
             assert!(names.contains(&browser), "{browser} missing from {names:?}");
         }
+    }
+
+    #[test]
+    fn reads_browser_lists() {
+        assert_eq!(
+            parse_browsers("Chrome, firefox,chrome").unwrap(),
+            ["chrome", "firefox"]
+        );
+        assert_eq!(parse_browsers("all").unwrap(), browser_ids());
+        assert!(parse_browsers("netscape").unwrap_err().contains("netscape"));
+        assert!(parse_browsers(" , ").is_err());
     }
 }

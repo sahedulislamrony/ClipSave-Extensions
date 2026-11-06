@@ -52,7 +52,8 @@ One TypeScript codebase built with [WXT](https://wxt.dev) into two outputs:
 ## The helper
 
 A single Rust binary, `helper/`, about 0.5 MB. The browser starts it on demand and talks to it over
-stdin/stdout. Run by hand it takes `--install`, `--uninstall` and `--version`.
+stdin/stdout. Run by hand it takes `--install [--browsers <list> | --all]`, `--uninstall`, `--version` and
+`--help`; with no options at a terminal it shows its help rather than waiting for a browser.
 
 | File | |
 |---|---|
@@ -137,7 +138,10 @@ literally, and adds ` (2)`, ` (3)`… instead of replacing a file of the same na
 ## Registration
 
 Browsers only start a native host they find a manifest for. `clipsave-helper --install` writes
-`link.clipsave.helper.json` into each browser's per-user folder on macOS and Linux. On Windows it writes the
+`link.clipsave.helper.json` into each browser's per-user folder on macOS and Linux: for every browser that has
+run on this computer, or with `--browsers chrome,firefox` exactly those (removing it from the rest; `--all` is
+every one). The installers pass the browsers the person picked and keep that list in `browsers` next to the
+helper, so one-click updates connect the same ones. On Windows it writes the
 manifests next to the helper and points a registry key under `HKEY_CURRENT_USER` at them for each browser, so no
 administrator rights are needed.
 
