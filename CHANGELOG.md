@@ -6,6 +6,8 @@ All notable changes to ClipSave for browsers are documented here. The format fol
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-07
+
 ### Added
 - **The installer asks which browsers you use**, with the ones on your computer already ticked, and connects
   just those. `--browsers chrome,firefox` or `--all` (`-Browsers`, `-All` on Windows) skip the question. It
