@@ -129,8 +129,9 @@ clipsave-helper --help
 - **Playlists:** open a playlist page (or paste its link) and ClipSave lists its videos. On a video that's part
   of a playlist, choose **Save the whole playlist**. Rename the **Folder name** if you like, choose how files are
   numbered (**1 → N** puts "01 - " in front of the first video, **N → 1** counts down, **None** leaves names
-  as they are), pick Video or Audio and a quality, untick any videos you don't want, and click **Download**. Sizes there are estimates (marked ≈) from each video's length. Each video downloads on its own, three at a time, into a folder named after the playlist. Very long
-  playlists show their first 1000 videos.
+  as they are), pick Video or Audio and a quality, untick any videos you don't want, and click **Download**. Sizes there are estimates (marked ≈) from each video's length. Each video downloads on its own, three at a time, into a folder named after the playlist. Playlists list
+  100 videos at a time: **Load next 100** (or **Load remaining N**) under the list reads more, unticked, so
+  your choice stays as it is.
 - **Right-click:** on a page or a link, choose **ClipSave → Save video** (best quality) or **Save audio (MP3)**.
 - **Downloads tab:** shows progress. Use **✕** to cancel, **↻** to retry a stopped download, and the folder
   icon to show the file. **Cancel all** stops everything still waiting or running. Downloads continue with the popup closed, and the toolbar button shows how many are

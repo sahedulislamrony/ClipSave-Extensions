@@ -24,6 +24,9 @@ pub enum Request {
         /// Read the playlist a link belongs to, not just the one video it points at.
         #[serde(default)]
         playlist: bool,
+        /// The 1-based position of the first playlist video to read. Older extensions leave it out.
+        #[serde(default = "first")]
+        start: u64,
     },
     Download {
         id: String,
@@ -63,6 +66,10 @@ pub enum Request {
         id: String,
         what: UpdateKind,
     },
+}
+
+fn first() -> u64 {
+    1
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -116,6 +123,8 @@ pub struct PlaylistEntry {
     pub title: String,
     pub duration_sec: Option<u64>,
     pub thumbnail: Option<String>,
+    /// The 0-based position in the playlist, which numbers the file. Skipped videos leave gaps.
+    pub index: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -127,7 +136,10 @@ pub struct PlaylistInfo {
     pub thumbnail: Option<String>,
     /// How many videos the playlist has, when the site says. Can be more than `entries` holds.
     pub total: Option<u64>,
+    /// One page of the playlist's videos.
     pub entries: Vec<PlaylistEntry>,
+    /// Where the next page starts (1-based), or `None` when this was the last.
+    pub next_start: Option<u64>,
 }
 
 /// Reads one message. `Ok(None)` means the browser closed the pipe.

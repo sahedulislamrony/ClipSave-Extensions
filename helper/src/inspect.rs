@@ -2,12 +2,15 @@
 //! `Extractor.fetch` in the Android app.
 
 use crate::engine::{friendly_error, is_allowed_url, is_youtube, Engine};
+use crate::naming::{clean_title, video_title};
 use crate::protocol::{AudioFormat, FormatOption, MediaInfo, PlaylistEntry, PlaylistInfo, Quality};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-/// A playlist answer has to fit in one 1 MB message; this many entries leaves plenty of room.
-pub const MAX_ENTRIES: usize = 1000;
+/// A playlist is read this many videos at a time, like the Android app: long playlists and endless
+/// Mixes would otherwise take minutes before anything shows. yt-dlp stops paging the site once it has
+/// the videos asked for, so a page costs about the same in a playlist of 100 or of 3,000.
+pub const PAGE_SIZE: u64 = 100;
 
 /// Titles YouTube gives the videos in a playlist that can't be saved.
 const UNAVAILABLE: [&str; 3] = ["[Private video]", "[Deleted video]", "[Unavailable video]"];
@@ -19,20 +22,33 @@ pub enum Inspected {
 
 /// With `playlist`, a video link that is part of a playlist (YouTube's `watch?v=…&list=…`) reads
 /// as that playlist. Without it, such a link reads as the one video, and only a link to a
-/// playlist itself reads as a playlist.
-pub fn inspect(engine: &Engine, url: &str, playlist: bool) -> Result<Inspected, String> {
+/// playlist itself reads as a playlist. A playlist's videos are read from `start` (1-based), one page.
+pub fn inspect(
+    engine: &Engine,
+    url: &str,
+    playlist: bool,
+    start: u64,
+) -> Result<Inspected, String> {
+    let start = start.max(1);
     let info = if is_youtube(url) && !playlist {
         // Solving YouTube's player challenge is most of a fetch, but the picker only needs heights
-        // and sizes, which come without it. Falls back to a full run if that loses the video formats.
-        run(engine, url, false, Some("youtube:player_skip=js;skip=hls"))
-            .ok()
-            .filter(|info| is_playlist(info) || has_video(info))
-            .map_or_else(|| run(engine, url, false, None), Ok)?
+        // and sizes, which come without it. The HLS manifest is one more request and a big parse for
+        // heights the DASH formats already list. Falls back to a full run if that loses the formats.
+        run(
+            engine,
+            url,
+            false,
+            start,
+            Some("youtube:player_skip=js;skip=hls"),
+        )
+        .ok()
+        .filter(|info| is_playlist(info) || has_video(info))
+        .map_or_else(|| run(engine, url, false, start, None), Ok)?
     } else {
-        run(engine, url, playlist, None)?
+        run(engine, url, playlist, start, None)?
     };
     Ok(if is_playlist(&info) {
-        Inspected::Playlist(parse_playlist(url, &info))
+        Inspected::Playlist(parse_playlist(url, &info, start))
     } else {
         Inspected::Media(parse(url, &info))
     })
@@ -42,6 +58,7 @@ fn run(
     engine: &Engine,
     url: &str,
     playlist: bool,
+    start: u64,
     extractor_args: Option<&str>,
 ) -> Result<Value, String> {
     let mut command = engine
@@ -50,7 +67,8 @@ fn run(
     // A flat playlist lists its videos without opening each one, so a long playlist reads in
     // seconds. It changes nothing for a single video.
     command.args(["-J", "--flat-playlist"]);
-    command.args(["--playlist-items", &format!("1:{MAX_ENTRIES}")]);
+    let end = start + PAGE_SIZE - 1;
+    command.args(["--playlist-items", &format!("{start}:{end}")]);
     if playlist {
         // Comes after the shared `--no-playlist`, so it wins.
         command.arg("--yes-playlist");
@@ -107,37 +125,54 @@ fn small_thumbnail(value: &Value) -> Option<String> {
         .or_else(|| text(value, "thumbnail").filter(|u| is_allowed_url(u)))
 }
 
-fn parse_playlist(url: &str, info: &Value) -> PlaylistInfo {
+/// One page of a playlist, read from the 1-based position `start`.
+fn parse_playlist(url: &str, info: &Value, start: u64) -> PlaylistInfo {
     let raw = info["entries"].as_array().map_or(&[][..], Vec::as_slice);
     let entries: Vec<PlaylistEntry> = raw
         .iter()
-        .filter_map(|entry| {
+        .zip(start - 1..)
+        .filter_map(|(entry, index)| {
             // Flat entries carry the video's own page in `url`; some sites only in `webpage_url`.
             let link = [text(entry, "url"), text(entry, "webpage_url")]
                 .into_iter()
                 .flatten()
                 .find(|u| is_allowed_url(u))?;
-            let title = text(entry, "title").unwrap_or_else(|| link.clone());
-            if UNAVAILABLE.contains(&title.as_str()) {
+            let title = text(entry, "title");
+            if title.as_deref().is_some_and(|t| UNAVAILABLE.contains(&t)) {
                 return None;
             }
+            // Without a usable title the link stands in, and the file is named by yt-dlp.
+            let title = title
+                .and_then(|t| clean_title(&t, text(entry, "uploader").as_deref()))
+                .unwrap_or_else(|| link.clone());
             Some(PlaylistEntry {
                 url: link,
-                title: title.chars().take(200).collect(),
+                title,
                 duration_sec: seconds(entry),
                 // The smallest one: the popup shows it at 64 pixels wide.
                 thumbnail: small_thumbnail(entry),
+                index,
             })
         })
-        .take(MAX_ENTRIES)
         .collect();
+    let total = info["playlist_count"].as_u64().filter(|n| *n > 0);
+    // A short page is the last one; so is reaching the length the site reports.
+    let next = start + PAGE_SIZE;
+    let next_start =
+        (raw.len() as u64 >= PAGE_SIZE && total.is_none_or(|t| next <= t)).then_some(next);
     PlaylistInfo {
         url: url.to_string(),
         title: text(info, "title").unwrap_or_else(|| "Playlist".to_string()),
         uploader: text(info, "uploader").or_else(|| text(info, "channel")),
-        thumbnail: thumbnail(info).or_else(|| raw.first().and_then(thumbnail)),
-        total: info["playlist_count"].as_u64().filter(|n| *n > 0),
+        // The first video's picture, as the app shows: a playlist's own cover is often a blank or a
+        // channel banner. It's the first video of the playlist, not of this page.
+        thumbnail: (start == 1)
+            .then(|| raw.first().and_then(thumbnail))
+            .flatten()
+            .or_else(|| thumbnail(info)),
+        total,
         entries,
+        next_start,
     }
 }
 
@@ -172,10 +207,17 @@ fn size(format: &Value) -> Option<u64> {
 
 /// Only what the popup shows: yt-dlp's full answer can pass the 1 MB message limit.
 fn parse(url: &str, info: &Value) -> MediaInfo {
+    let uploader = text(info, "uploader").or_else(|| text(info, "channel"));
     MediaInfo {
         url: url.to_string(),
-        title: text(info, "title").unwrap_or_else(|| "Video".to_string()),
-        uploader: text(info, "uploader").or_else(|| text(info, "channel")),
+        // Also the file name the popup suggests, so no view counts or "Video by someone".
+        title: video_title(
+            text(info, "title").as_deref(),
+            text(info, "description").as_deref(),
+            uploader.as_deref(),
+            text(info, "webpage_url").as_deref().unwrap_or(url),
+        ),
+        uploader,
         thumbnail: text(info, "thumbnail"),
         duration_sec: seconds(info),
         options: options(formats(info)),
@@ -282,7 +324,7 @@ mod tests {
             "https://a/b",
             &json!({ "formats": [{ "url": "https://a/v.mp4" }] }),
         );
-        assert_eq!(media.title, "Video");
+        assert_eq!(media.title, "A video");
         assert_eq!(media.options[0].quality, Quality::Best);
         assert_eq!(media.options.len(), 3);
     }
@@ -300,10 +342,13 @@ mod tests {
                 { "url": "not-a-link" },
             ],
         });
-        let playlist = parse_playlist("https://a/list", &info);
+        let playlist = parse_playlist("https://a/list", &info, 1);
         assert_eq!(playlist.title, "Mix");
         assert_eq!(playlist.uploader.as_deref(), Some("Someone"));
-        assert_eq!(playlist.thumbnail.as_deref(), Some("https://a/big.jpg"));
+        // The first video's own picture, its biggest.
+        assert_eq!(playlist.thumbnail.as_deref(), Some("https://i/a-big.jpg"));
+        // A short page is the last one.
+        assert_eq!(playlist.next_start, None);
         assert_eq!(playlist.total, Some(40));
         assert_eq!(
             playlist.entries[0].thumbnail.as_deref(),
@@ -313,14 +358,61 @@ mod tests {
         let rows: Vec<_> = playlist
             .entries
             .iter()
-            .map(|e| (e.url.as_str(), e.title.as_str(), e.duration_sec))
+            .map(|e| (e.url.as_str(), e.title.as_str(), e.duration_sec, e.index))
             .collect();
         assert_eq!(
             rows,
             [
-                ("https://www.youtube.com/watch?v=a", "First", Some(61)),
-                ("https://site.example/v/2", "https://site.example/v/2", None),
+                ("https://www.youtube.com/watch?v=a", "First", Some(61), 0),
+                (
+                    "https://site.example/v/2",
+                    "https://site.example/v/2",
+                    None,
+                    2
+                ),
             ]
         );
+    }
+
+    fn page(count: usize) -> Value {
+        let entries: Vec<Value> = (0..count)
+            .map(|i| json!({ "url": format!("https://www.youtube.com/watch?v={i}"), "title": format!("V{i}") }))
+            .collect();
+        json!({ "_type": "playlist", "title": "Long", "entries": entries })
+    }
+
+    #[test]
+    fn pages_through_a_long_playlist() {
+        // A full page of an endless Mix: there's more, and positions carry on from `start`.
+        let second = parse_playlist("https://a/list", &page(100), 101);
+        assert_eq!(second.next_start, Some(201));
+        assert_eq!(second.entries[0].index, 100);
+        assert_eq!(second.entries[99].index, 199);
+
+        // A full page that reaches the reported length is the last.
+        let mut info = page(100);
+        info["playlist_count"] = json!(200);
+        assert_eq!(
+            parse_playlist("https://a/list", &info, 101).next_start,
+            None
+        );
+        info["playlist_count"] = json!(250);
+        assert_eq!(
+            parse_playlist("https://a/list", &info, 101).next_start,
+            Some(201)
+        );
+    }
+
+    #[test]
+    fn titles_a_facebook_video_by_its_caption() {
+        let media = parse(
+            "https://www.facebook.com/reel/1",
+            &json!({
+                "title": "2.3K views · 120 reactions | Rainy evening in Dhaka | City Diaries",
+                "uploader": "City Diaries",
+                "formats": [],
+            }),
+        );
+        assert_eq!(media.title, "Rainy evening in Dhaka");
     }
 }

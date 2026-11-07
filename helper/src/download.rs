@@ -199,6 +199,25 @@ fn output_template(target: &Path, naming: &Naming) -> String {
     }
 }
 
+/// Facebook's view and reaction counts in front of a title (`1.2K views · 345 reactions | Caption`), and
+/// its name at the end, as Python patterns for yt-dlp. The popup sends a cleaned name itself
+/// (`naming.rs`); these cover downloads that come without one, like the right-click menu.
+const TITLE_CLEANUP: [&str; 2] = [
+    r"(?i)^\s*(?:\d[\d.,]*[KMB]?\s+(?:views?|reactions?|comments?|shares?|likes?|plays?)\s*[·•|]\s*)+",
+    r"(?i)\s*[|·-]\s*(?:Facebook|Instagram)\s*$",
+];
+
+/// yt-dlp options that tidy the title a download is named by when nobody chose a name.
+fn untitled_cleanup(naming: &Naming) -> Vec<&'static str> {
+    if naming.name.as_deref().and_then(file_name).is_some() {
+        return Vec::new();
+    }
+    TITLE_CLEANUP
+        .iter()
+        .flat_map(|pattern| ["--replace-in-metadata", "title", pattern, ""])
+        .collect()
+}
+
 pub fn start(
     engine: Arc<Engine>,
     jobs: Jobs,
@@ -252,6 +271,7 @@ fn run(
         .arg("--paths")
         .arg(format!("temp:{}", partial.display()))
         .args(["-o", &output_template(&target, naming)])
+        .args(untitled_cleanup(naming))
         .args(["--progress", "--newline"])
         .args(["--print", &format!("before_dl:{START}%(format_id)s|%(filesize,filesize_approx)s|%(title)s")])
         .args(["--print", &format!("after_move:{PATH}%(filepath)s")])

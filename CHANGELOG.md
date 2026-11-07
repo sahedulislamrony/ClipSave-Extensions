@@ -13,7 +13,18 @@ All notable changes to ClipSave for browsers are documented here. The format fol
 - **A `clipsave-helper` command.** The installer adds it to your `PATH`; `--no-modify-path` (`-NoModifyPath`)
   leaves `PATH` alone. The helper takes `--install --browsers <list>`, `--install --all` and `--help`.
 
+- **Playlists read 100 videos at a time**, so long playlists and endless Mixes show in seconds. **Load next 100**
+  (or **Load remaining N**) under the list reads more; new videos start unticked, and files keep the number of
+  their place in the whole playlist.
+
 ### Changed
+- **A video shows straight away.** The popup shows a YouTube video's picture and the tab's title as soon as it
+  opens, then the title and channel from YouTube, Vimeo or TikTok, while the qualities load. It no longer waits
+  for the helper's version check before reading the page.
+- **Cleaner titles and file names.** Facebook's view, reaction and comment counts are left out, and the page name
+  after the caption. When a title says nothing ("Video by someone" on Instagram), the caption's first words are
+  used, and failing that "Facebook video", "Instagram video" and so on. Long captions are cut after a whole word.
+- **A playlist's picture is its first video's**, as in the Android app.
 - **The installer shows every step as it goes**, in color, with a progress bar for each download, so it never
   looks stuck. It ends with how to add the extension to each browser you picked, skipping browsers that
   already have it, and copies the extension's folder path for **Load unpacked**.

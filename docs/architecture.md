@@ -31,14 +31,19 @@ One TypeScript codebase built with [WXT](https://wxt.dev) into two outputs:
   worker both exit (`src/lib/helper.ts`).
 - **Both builds behave the same**, YouTube included. ClipSave isn't published on the Chrome Web Store, whose
   rules don't allow YouTube downloads, so the Chrome build is installed unpacked.
-- **Playlists** are read flat (`yt-dlp --flat-playlist`), which lists the videos without opening each one, so
-  a long playlist reads in seconds. The popup then queues one download per chosen video, tagged with the
+- **Playlists** are read flat (`yt-dlp --flat-playlist`), which lists the videos without opening each one, 100
+  at a time (`--playlist-items`), so even a playlist of thousands, or an endless Mix, shows in seconds;
+  **Load next 100** reads the next page. The cover is the first video's picture. The popup then queues one download per chosen video, tagged with the
   playlist, so each has its own progress, cancel and retry. They save to a subfolder named after the playlist,
   and one notification covers the whole playlist.
 - **The download list** lives in `storage.local` (`src/lib/downloads.ts`). The popup only renders it and
   follows changes, so closing the popup affects nothing. At most three downloads run at once. Unfinished
   downloads always stay in the list, however many a playlist adds; only finished ones past 30 are dropped. When the browser
   starts, anything that was still running is marked **Stopped** so it can be retried.
+- **The popup shows a video before its qualities** (`src/lib/preview.ts`): a YouTube video's picture straight
+  from the ID in the link, the tab's title, then the title and channel from the site's oEmbed endpoint for
+  YouTube, Vimeo and TikTok, whose answers an extension may read without host permissions. It asks the helper
+  for `hello` and for the page at the same time, rather than one after the other.
 - **Settings** (`src/entrypoints/options/`) opens as a full tab. It shows versions and system details, runs
   one-click updates, and sets the video and audio folders through the helper.
 - **Update checks** (`src/lib/updates.ts`) ask GitHub's releases API for the newest ClipSave and yt-dlp, from
@@ -60,6 +65,7 @@ stdin/stdout. Run by hand it takes `--install [--browsers <list> | --all]`, `--u
 | `protocol.rs` | message framing (32-bit length + JSON) and message types |
 | `engine.rs` | finds yt-dlp, ffmpeg and deno; arguments every run shares; link checks; readable errors |
 | `inspect.rs` | `yt-dlp -J --flat-playlist`, reduced to what the quality picker or the playlist list shows |
+| `naming.rs` | the title shown and suggested as the file name: no view or reaction counts, else the caption's first words, else "Facebook video" |
 | `download.rs` | runs a download, reports progress, cancels, opens the folder |
 | `settings.rs` | the video and audio folders chosen in Settings, in `<config>/ClipSave/settings.json` |
 | `install.rs` | writes the host manifests (and on Windows, registry keys) that tell each browser where the helper is |
@@ -113,7 +119,7 @@ is its job ID, and all its events carry it.
 | Extension → helper | Reply or events |
 |---|---|
 | `hello` | `hello` with `helper: { version, ytDlp, ffmpeg, jsRuntime, videoDir, audioDir, defaultVideoDir, defaultAudioDir, path, os, arch, features }` |
-| `inspect { url, playlist? }` | `info { media }` for a video, `info { playlist }` for a playlist, or `error { message }` |
+| `inspect { url, playlist?, start? }` | `info { media }` for a video, `info { playlist }` for a playlist, or `error { message }` |
 | `download { url, quality, folder?, name?, prefix? }` | `title`, then `progress { phase, percent, speedBytes, etaSec }` (at most every 0.4 s), then `done { path }` or `failed { message }` |
 | `cancel` | nothing; the job ends quietly |
 | `reveal { path }` | `revealed` or `error` |
@@ -126,7 +132,9 @@ The helper turns it into the same yt-dlp format selectors the Android app uses.
 
 A link to a playlist itself always reads as the playlist. A video in a playlist (YouTube's `watch?v=…&list=…`)
 reads as the one video, unless `playlist: true` asks for the playlist. `playlist` is
-`{ url, title, uploader, thumbnail, total, entries: [{ url, title, durationSec }] }`, at most 1000 entries;
+`{ url, title, uploader, thumbnail, total, nextStart, entries: [{ url, title, durationSec, thumbnail, index }] }`:
+one page of at most 100 videos from the 1-based position `start` (default 1). `index` is the video's 0-based place
+in the whole playlist, which numbers its file; `nextStart` is where the next page starts, or null after the last.
 `total` is the playlist's full length when the site gives it. `folder` names the playlist's subfolder.
 
 `name` is the file name without its extension (yt-dlp adds that); without it the file is named
