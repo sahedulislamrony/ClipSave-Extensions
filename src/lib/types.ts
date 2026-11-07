@@ -26,6 +26,8 @@ export interface PlaylistEntry {
   durationSec: number | null;
   /** Absent from older helpers. */
   thumbnail?: string | null;
+  /** The 0-based position in the whole playlist, which numbers the file. Absent from older helpers. */
+  index?: number;
 }
 
 /** How playlist files are numbered at the front of their names: 1 → N, N → 1, or not at all. */
@@ -38,8 +40,14 @@ export interface PlaylistInfo {
   thumbnail: string | null;
   /** How many videos the playlist has, when the site says. Can be more than `entries` holds. */
   total: number | null;
+  /** The videos read so far: one page of `PLAYLIST_PAGE` from the helper, more as the person asks. */
   entries: PlaylistEntry[];
+  /** Where the next page starts (1-based); null or absent when there's no more, or an older helper. */
+  nextStart?: number | null;
 }
+
+/** How many playlist videos the helper reads at a time. */
+export const PLAYLIST_PAGE = 100;
 
 /** The helper reads a link as one video or as a playlist. */
 export type Inspected = { media: MediaInfo; playlist?: undefined } | { playlist: PlaylistInfo; media?: undefined };
@@ -97,7 +105,8 @@ export interface DownloadItem {
 /** What the popup asks the background to do. */
 export type Command =
   | { type: 'status' }
-  | { type: 'inspect'; url: string; playlist?: boolean }
+  /** `start` is the 1-based position of the first playlist video to read. */
+  | { type: 'inspect'; url: string; playlist?: boolean; start?: number }
   /** `name` is the file name the person typed; empty or absent keeps the video's title. */
   | { type: 'download'; media: Pick<MediaInfo, 'url' | 'title' | 'thumbnail'>; option: FormatOption; name?: string | null }
   /**

@@ -71,13 +71,13 @@ export default defineBackground({
       return null;
     }
 
-    async function inspect(url: string, playlist: boolean): Promise<Result<Inspected>> {
+    async function inspect(url: string, playlist: boolean, start: number): Promise<Result<Inspected>> {
       const denied = refused(url);
       if (denied) return denied;
-      const key = `${playlist ? 'playlist' : 'video'} ${url}`;
+      const key = `${playlist ? 'playlist' : 'video'} ${start} ${url}`;
       const cached = inspected.get(key);
       if (cached && Date.now() - cached.at < INSPECT_CACHE_MS) return { ok: true, ...cached.result };
-      const reply = await helper.request({ type: 'inspect', url, playlist });
+      const reply = await helper.request({ type: 'inspect', url, playlist, ...(start > 1 ? { start } : {}) });
       const result: Inspected = reply.playlist
         ? { playlist: reply.playlist as PlaylistInfo }
         : { media: reply.media as MediaInfo };
@@ -166,7 +166,7 @@ export default defineBackground({
         case 'reloadIfUpdated':
           return { ok: true, reloading: await reloadIfUpdated() };
         case 'inspect':
-          return inspect(command.url, command.playlist ?? false);
+          return inspect(command.url, command.playlist ?? false, command.start ?? 1);
         case 'download':
           return enqueue(command.media, command.option.quality, command.option.label, command.name ?? null);
         case 'downloadPlaylist':

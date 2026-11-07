@@ -5,6 +5,7 @@ mod download;
 mod engine;
 mod inspect;
 mod install;
+mod naming;
 mod platform;
 mod protocol;
 mod settings;
@@ -144,7 +145,7 @@ fn handle(request: Request, engine: &Arc<Engine>, jobs: &Jobs, out: &Outbox) {
                         "os": std::env::consts::OS,
                         "arch": std::env::consts::ARCH,
                         // What this helper can do, so a newer extension can tell an older helper apart.
-                        "features": ["playlists", "folders", "pickFolder", "update"],
+                        "features": ["playlists", "folders", "pickFolder", "update", "pages"],
                         "lastUpdate": update::last_result(),
                         "updateLog": update::log_file(),
                         "extensionDir": update::extension_dir(),
@@ -152,20 +153,27 @@ fn handle(request: Request, engine: &Arc<Engine>, jobs: &Jobs, out: &Outbox) {
                 }));
             });
         }
-        Request::Inspect { id, url, playlist } => {
+        Request::Inspect {
+            id,
+            url,
+            playlist,
+            start,
+        } => {
             if !engine::is_allowed_url(&url) {
                 return out.error(&id, "This isn't a web link.");
             }
             let (engine, out) = (engine.clone(), out.clone());
-            thread::spawn(move || match inspect::inspect(&engine, &url, playlist) {
-                Ok(Inspected::Media(media)) => {
-                    out.send(json!({ "id": id, "type": "info", "media": media }))
-                }
-                Ok(Inspected::Playlist(playlist)) => {
-                    out.send(json!({ "id": id, "type": "info", "playlist": playlist }))
-                }
-                Err(message) => out.error(&id, &message),
-            });
+            thread::spawn(
+                move || match inspect::inspect(&engine, &url, playlist, start) {
+                    Ok(Inspected::Media(media)) => {
+                        out.send(json!({ "id": id, "type": "info", "media": media }))
+                    }
+                    Ok(Inspected::Playlist(playlist)) => {
+                        out.send(json!({ "id": id, "type": "info", "playlist": playlist }))
+                    }
+                    Err(message) => out.error(&id, &message),
+                },
+            );
         }
         Request::Download {
             id,

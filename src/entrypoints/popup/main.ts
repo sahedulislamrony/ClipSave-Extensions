@@ -9,6 +9,7 @@ import { estimateBytes, formatDuration, formatSize, numberPrefix } from '@/lib/f
 import { HELP_PAGE, installStep } from '@/lib/install';
 import {
   PLAYLIST_OPTIONS,
+  PLAYLIST_PAGE,
   type Command,
   type DownloadItem,
   type Failure,
@@ -16,11 +17,13 @@ import {
   type Inspected,
   type Numbering,
   type MediaInfo,
+  type PlaylistEntry,
   type PlaylistInfo,
   type Quality,
   type Result,
 } from '@/lib/types';
 import { isVideoInPlaylist, isWebUrl } from '@/lib/url';
+import { fetchPreview, instantPreview, type LinkPreview } from '@/lib/preview';
 import { el, icon, type IconName } from '@/lib/dom';
 import { readUpdateState } from '@/lib/prefs';
 import { available } from '@/lib/updates';
@@ -31,7 +34,8 @@ const HELPER_CHECK_MS = 2000;
 
 type SaveState =
   | { kind: 'empty' }
-  | { kind: 'loading' }
+  /** `preview` is what's already known about the link; `note` says what's being read. */
+  | { kind: 'loading'; preview?: LinkPreview | null; note?: string }
   | { kind: 'media'; media: MediaInfo }
   /** `from` is the video the playlist was opened from, for the way back. */
   | { kind: 'playlist'; playlist: PlaylistInfo; from: MediaInfo | null }
@@ -77,7 +81,11 @@ function showTab(tab: 'save' | 'downloads') {
   tabDownloads.setAttribute('aria-selected', String(!save));
 }
 
+/** What the Save tab shows now, so a late answer can tell whether it still belongs there. */
+let shown: SaveState = { kind: 'empty' };
+
 function renderSave(state: SaveState) {
+  shown = state;
   switch (state.kind) {
     case 'empty':
       return saveBody.replaceChildren(
@@ -90,21 +98,7 @@ function renderSave(state: SaveState) {
         ),
       );
     case 'loading':
-      return saveBody.replaceChildren(
-        el(
-          'div',
-          { className: 'loading', ariaBusy: 'true', ariaLabel: 'Reading this page' },
-          el(
-            'div',
-            { className: 'media' },
-            el('div', { className: 'thumb skeleton' }),
-            el('div', { className: 'media-text' }, el('div', { className: 'line skeleton' }), el('div', { className: 'line short skeleton' })),
-          ),
-          el('div', { className: 'segmented skeleton' }),
-          el('div', { className: 'options' }, ...[0, 1, 2].map(() => el('div', { className: 'option skeleton' }))),
-          el('p', { className: 'meta center' }, 'Finding qualities. It usually takes a few seconds.'),
-        ),
-      );
+      return saveBody.replaceChildren(renderLoading(state.preview ?? null, state.note));
     case 'media':
       return saveBody.replaceChildren(...renderMedia(state.media));
     case 'playlist':
@@ -112,6 +106,34 @@ function renderSave(state: SaveState) {
     case 'failed':
       return saveBody.replaceChildren(renderFailure(state.failure));
   }
+}
+
+/**
+ * The picker's outline while the helper reads the link, with whatever is already known in place of its
+ * skeleton: the picture and title show at once, the qualities when they're found.
+ */
+function renderLoading(preview: LinkPreview | null, note = 'Finding qualities. It usually takes a few seconds.'): HTMLElement {
+  const title = preview?.title;
+  return el(
+    'div',
+    { className: 'loading', ariaBusy: 'true', ariaLabel: 'Reading this page' },
+    el(
+      'div',
+      { className: 'media' },
+      preview?.thumbnail
+        ? el('img', { className: 'thumb', src: preview.thumbnail, alt: '', referrerPolicy: 'no-referrer' })
+        : el('div', { className: 'thumb skeleton' }),
+      el(
+        'div',
+        { className: 'media-text' },
+        title ? el('p', { className: 'title', title }, title) : el('div', { className: 'line skeleton' }),
+        preview?.uploader ? el('p', { className: 'meta' }, preview.uploader) : el('div', { className: 'line short skeleton' }),
+      ),
+    ),
+    el('div', { className: 'segmented skeleton' }),
+    el('div', { className: 'options' }, ...[0, 1, 2].map(() => el('div', { className: 'option skeleton' }))),
+    el('p', { className: 'meta center' }, note),
+  );
 }
 
 let platform = '';
@@ -339,7 +361,7 @@ function renderMedia(media: MediaInfo): Node[] {
 }
 
 async function openPlaylist(from: MediaInfo) {
-  renderSave({ kind: 'loading' });
+  renderSave({ kind: 'loading', note: `Reading the playlist's first ${PLAYLIST_PAGE} videos.` });
   const result = await send<Inspected>({ type: 'inspect', url: from.url, playlist: true });
   if (input.value.trim() !== from.url) return;
   if (!result.ok) return renderSave({ kind: 'failed', failure: result });
@@ -352,7 +374,21 @@ function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
-function renderPlaylist(playlist: PlaylistInfo, from: MediaInfo | null): Node[] {
+/** A video's place in the whole playlist. Older helpers don't say; their list has every video in order. */
+const positionOf = (entry: PlaylistEntry, i: number) => entry.index ?? i;
+
+/** "Load next 100", or "Load remaining 37" when that's the rest. Null when there's nothing left to read. */
+function moreLabel(playlist: PlaylistInfo): string | null {
+  const start = playlist.nextStart;
+  if (!start) return null;
+  const left = playlist.total ? playlist.total - start + 1 : null;
+  if (left !== null && left <= 0) return null;
+  return left !== null && left <= PLAYLIST_PAGE ? `Load remaining ${left}` : `Load next ${PLAYLIST_PAGE}`;
+}
+
+function renderPlaylist(first: PlaylistInfo, from: MediaInfo | null): Node[] {
+  // Grows by a page each time the person asks for more.
+  const playlist: PlaylistInfo = { ...first, entries: [...first.entries] };
   const { entries } = playlist;
   const back = from
     ? el(
@@ -362,35 +398,40 @@ function renderPlaylist(playlist: PlaylistInfo, from: MediaInfo | null): Node[] 
         'This video only',
       )
     : null;
-  const count =
+  const countText = () =>
     playlist.total && playlist.total > entries.length
-      ? `first ${entries.length} of ${playlist.total} videos`
+      ? `${entries.length} of ${playlist.total} videos`
       : plural(entries.length, 'video');
-  const header = mediaHeader(playlist.thumbnail, playlist.title, [playlist.uploader, count].filter(Boolean).join(' · '), 'playlist');
+  const header = mediaHeader(playlist.thumbnail, playlist.title, [playlist.uploader, countText()].filter(Boolean).join(' · '), 'playlist');
+  const headerMeta = header.querySelector<HTMLElement>('.meta')!;
   const lead = back ? [back, header] : [header];
   if (entries.length === 0) return [...lead, el('p', { className: 'hint' }, 'This playlist has no videos to save.')];
 
   const folder = nameField('Folder name', playlist.title, 'Folder name');
-  // Numbers count against the whole playlist, so a video keeps its number whichever ones are ticked.
-  const total = playlist.total && playlist.total > entries.length ? playlist.total : entries.length;
+  // Numbers count against the whole playlist, so a video keeps its number whichever ones are ticked and
+  // however many pages are read.
+  const numberingTotal = () => Math.max(playlist.total ?? 0, ...entries.map((entry, i) => positionOf(entry, i) + 1));
+  let total = numberingTotal();
   let numbering: Numbering = 'asc';
   const preview = el('p', { className: 'meta preview' });
-  const numberSwitch = segmented<Numbering>(
-    'Number files',
-    [
-      ['asc', `1 → ${total}`],
-      ['desc', `${total} → 1`],
-      ['none', 'None'],
-    ],
-    numbering,
-    (value) => {
-      numbering = value;
-      refresh();
-    },
-  );
+  const numberSwitch = () =>
+    segmented<Numbering>(
+      'Number files',
+      [
+        ['asc', `1 → ${total}`],
+        ['desc', `${total} → 1`],
+        ['none', 'None'],
+      ],
+      numbering,
+      (value) => {
+        numbering = value;
+        refresh();
+      },
+    );
+  let numbers = numberSwitch();
 
   // A playlist's videos aren't read one by one, so its sizes are estimates from their lengths.
-  const boxes = entries.map((entry) => el('input', { type: 'checkbox', className: 'check', checked: true, ariaLabel: entry.title }));
+  const boxes: HTMLInputElement[] = [];
   const chosen = () => entries.filter((_, i) => boxes[i]!.checked);
   const estimate = (option: Choice) => {
     const size = formatSize(estimateBytes(option.quality, chosen().map((entry) => entry.durationSec)));
@@ -398,28 +439,82 @@ function renderPlaylist(playlist: PlaylistInfo, from: MediaInfo | null): Node[] 
   };
   let choice: Choice | undefined;
   let refresh = () => {};
+
+  const list = el('div', { className: 'entries' });
+  /** Adds rows for videos just read. The first page starts ticked; later ones don't, so the pick stays. */
+  function addRows(added: PlaylistEntry[], checked: boolean) {
+    for (const entry of added) {
+      const i = boxes.length;
+      const box = el('input', { type: 'checkbox', className: 'check', checked, ariaLabel: entry.title });
+      box.addEventListener('change', () => refresh());
+      boxes.push(box);
+      list.append(
+        el(
+          'label',
+          { className: 'entry' },
+          el('span', { className: 'entry-index' }, String(positionOf(entry, i) + 1)),
+          entry.thumbnail
+            ? el('img', { className: 'entry-thumb', src: entry.thumbnail, alt: '', loading: 'lazy', referrerPolicy: 'no-referrer' })
+            : el('span', { className: 'entry-thumb' }),
+          el(
+            'span',
+            { className: 'entry-text' },
+            el('span', { className: 'entry-title', title: entry.title }, entry.title),
+            el('span', { className: 'entry-time' }, formatDuration(entry.durationSec) ?? ''),
+          ),
+          box,
+        ),
+      );
+    }
+  }
+  addRows(entries, true);
+  // After the rows: it measures the ticked videos straight away.
   const picker = qualityPicker(PLAYLIST_OPTIONS.map((option) => ({ ...option, sizeBytes: null })), estimate, (picked) => {
     choice = picked;
     refresh();
   });
 
-  const rows = entries.map((entry, i) =>
-    el(
-      'label',
-      { className: 'entry' },
-      el('span', { className: 'entry-index' }, String(i + 1)),
-      entry.thumbnail
-        ? el('img', { className: 'entry-thumb', src: entry.thumbnail, alt: '', loading: 'lazy', referrerPolicy: 'no-referrer' })
-        : el('span', { className: 'entry-thumb' }),
-      el(
-        'span',
-        { className: 'entry-text' },
-        el('span', { className: 'entry-title', title: entry.title }, entry.title),
-        el('span', { className: 'entry-time' }, formatDuration(entry.durationSec) ?? ''),
-      ),
-      boxes[i]!,
-    ),
-  );
+  const more = el('button', { className: 'secondary wide more', type: 'button' });
+  const moreError = el('p', { className: 'meta more-error', hidden: true });
+  const showMore = () => {
+    const label = moreLabel(playlist);
+    more.hidden = label === null;
+    more.disabled = false;
+    more.textContent = label ?? '';
+  };
+  more.addEventListener('click', async () => {
+    const start = playlist.nextStart;
+    if (!start) return;
+    more.disabled = true;
+    more.textContent = 'Loading…';
+    moreError.hidden = true;
+    const page = await send<Inspected>({ type: 'inspect', url: playlist.url, playlist: true, start });
+    if (!list.isConnected) return;
+    if (!page.ok || !page.playlist) {
+      moreError.textContent = page.ok ? "Couldn't read more videos." : page.message;
+      moreError.hidden = false;
+      showMore();
+      more.textContent = 'Try again';
+      return;
+    }
+    const known = new Set(entries.map(positionOf));
+    const added = page.playlist.entries.filter((entry) => entry.index === undefined || !known.has(entry.index));
+    entries.push(...added);
+    playlist.total = page.playlist.total ?? playlist.total;
+    playlist.nextStart = page.playlist.nextStart ?? null;
+    addRows(added, false);
+    headerMeta.textContent = [playlist.uploader, countText()].filter(Boolean).join(' · ');
+    const next = numberingTotal();
+    if (next !== total) {
+      total = next;
+      const replaced = numberSwitch();
+      numbers.replaceWith(replaced);
+      numbers = replaced;
+    }
+    showMore();
+    refresh();
+  });
+  showMore();
 
   const summary = el('p', { className: 'meta' });
   const toggle = el('button', { className: 'small-button', type: 'button' });
@@ -435,12 +530,11 @@ function renderPlaylist(playlist: PlaylistInfo, from: MediaInfo | null): Node[] 
     );
     save.disabled = n === 0;
     toggle.textContent = n > 0 ? 'Clear' : 'Select all';
-    const first = chosen()[0] ?? entries[0]!;
-    const firstName = `${numberPrefix(entries.indexOf(first), total, numbering)}${first.title}`;
+    const firstIndex = Math.max(0, entries.findIndex((_, i) => boxes[i]!.checked));
+    const firstName = `${numberPrefix(positionOf(entries[firstIndex]!, firstIndex), total, numbering)}${entries[firstIndex]!.title}`;
     preview.textContent = `First file: ${firstName}`;
     preview.title = firstName;
   };
-  for (const box of boxes) box.addEventListener('change', refresh);
   toggle.addEventListener('click', () => {
     const all = chosen().length === 0;
     for (const box of boxes) box.checked = all;
@@ -453,7 +547,7 @@ function renderPlaylist(playlist: PlaylistInfo, from: MediaInfo | null): Node[] 
     const result = await send<object>({
       type: 'downloadPlaylist',
       folder: folder.input.value.trim() || playlist.title,
-      entries: entries.map((entry, index) => ({ ...entry, index })).filter((_, i) => boxes[i]!.checked),
+      entries: entries.map((entry, i) => ({ ...entry, index: positionOf(entry, i) })).filter((_, i) => boxes[i]!.checked),
       option,
       numbering,
       total,
@@ -463,10 +557,11 @@ function renderPlaylist(playlist: PlaylistInfo, from: MediaInfo | null): Node[] 
   });
   refresh();
 
+  const numberField = el('div', { className: 'field' }, el('span', { className: 'field-label' }, 'Number files'), numbers, preview);
   return [
     ...lead,
     folder.element,
-    el('div', { className: 'field' }, el('span', { className: 'field-label' }, 'Number files'), numberSwitch, preview),
+    numberField,
     picker.element,
     el(
       'div',
@@ -474,7 +569,9 @@ function renderPlaylist(playlist: PlaylistInfo, from: MediaInfo | null): Node[] 
       el('div', {}, el('h2', { className: 'section-title' }, 'Videos'), summary),
       toggle,
     ),
-    el('div', { className: 'entries' }, ...rows),
+    list,
+    moreError,
+    more,
     actionBar(save),
   ];
 }
@@ -569,16 +666,31 @@ function renderDownloads(items: DownloadItem[]) {
   );
 }
 
+/** The page the popup opened on, whose title can stand in until the helper has read it. */
+let currentTab: { url?: string; title?: string } | null = null;
+
 async function find() {
   const url = input.value.trim();
   if (!url) return renderSave({ kind: 'empty' });
-  renderSave({ kind: 'loading' });
+  // The picture and title come from the link and the tab at once, and from the site in a moment; the
+  // qualities take the helper a few seconds.
+  let preview = instantPreview(url, currentTab);
+  const loading: SaveState = { kind: 'loading', preview };
+  renderSave(loading);
+  void fetchPreview(url).then((found) => {
+    // Too late: the qualities came first, or a newer search started.
+    if (!found || shown !== loading) return;
+    // Keeps the picture already showing, so it doesn't flash.
+    preview = { title: found.title ?? preview?.title ?? null, uploader: found.uploader, thumbnail: preview?.thumbnail ?? found.thumbnail };
+    renderSave({ kind: 'loading', preview });
+  });
+
   const result = await send<Inspected>({ type: 'inspect', url });
-  // A newer search may have started while this one ran.
   if (input.value.trim() !== url) return;
   if (!result.ok) renderSave({ kind: 'failed', failure: result });
   else if (result.playlist) renderSave({ kind: 'playlist', playlist: result.playlist, from: null });
-  else renderSave({ kind: 'media', media: result.media });
+  // The picture already loaded is the same video's, and smaller than yt-dlp's biggest.
+  else renderSave({ kind: 'media', media: { ...result.media, thumbnail: preview?.thumbnail ?? result.media.thumbnail } });
   if (!result.ok && result.code === 'helper_missing') void waitForHelper();
 }
 
@@ -600,6 +712,7 @@ async function waitForHelper() {
 /** Starts with the page the popup was opened on, when it's a web page. */
 async function readCurrentTab() {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  currentTab = tab ? { url: tab.url, title: tab.title } : null;
   if (tab?.url && isWebUrl(tab.url)) {
     input.value = tab.url;
     await find();
@@ -661,13 +774,15 @@ async function start() {
 
   platform = (await browser.runtime.getPlatformInfo()).os;
 
-  const status = await send<{ helper: HelperInfo }>({ type: 'status' });
-  if (status.ok) void showUpdateNotice(status.helper);
-  if (!status.ok) {
+  // Asking the helper about itself runs yt-dlp once, so reading the page doesn't wait for it: both go at
+  // once. A missing helper fails the page read too, which then shows the install step.
+  void send<{ helper: HelperInfo }>({ type: 'status' }).then((status) => {
+    if (status.ok) return void showUpdateNotice(status.helper);
+    // Nothing was read that would show the problem.
+    if (shown.kind !== 'empty') return;
     renderSave({ kind: 'failed', failure: status });
     if (status.code === 'helper_missing') void waitForHelper();
-    return;
-  }
+  });
   await readCurrentTab();
 }
 
