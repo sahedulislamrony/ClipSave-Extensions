@@ -40,7 +40,22 @@ $guide = "https://github.com/$repo/blob/main/docs/install.md"
 $firefoxAddon = 'https://addons.mozilla.org/firefox/addon/clipsave@sahedulislamrony.github.io/'
 $chromeId = 'engejhilbedikenhabjndbpgpdhaedge'
 $firefoxId = 'clipsave@sahedulislamrony.github.io'
-$asset = 'clipsave-helper-windows-x86_64.zip'
+# The computer's processor, not this PowerShell's: on a Windows on Arm PC an x64 PowerShell runs emulated and
+# reports AMD64, but the system's own setting says ARM64.
+$machineArch = $null
+try {
+  $machineArch = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' -Name PROCESSOR_ARCHITECTURE -ErrorAction Stop).PROCESSOR_ARCHITECTURE
+}
+catch { }
+if (-not $machineArch) { $machineArch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE } }
+if ($machineArch -eq 'ARM64') {
+  $asset = 'clipsave-helper-windows-arm64.zip'
+  $ytdlpAsset = 'yt-dlp_arm64.exe'
+}
+else {
+  $asset = 'clipsave-helper-windows-x86_64.zip'
+  $ytdlpAsset = 'yt-dlp.exe'
+}
 $extensionAsset = 'clipsave-extension-chromium.tar.gz'
 $dest = Join-Path $env:LOCALAPPDATA 'ClipSave'
 $helperDir = Join-Path $dest 'helper'
@@ -353,8 +368,8 @@ try {
     $vendor = Join-Path $helperDir 'vendor'
     if (-not (Test-Path $vendor)) { throw "The ClipSave Helper isn't installed here yet." }
     Get-File "$ytdlpBase/SHA2-256SUMS" (Join-Path $work 'SHA2-256SUMS') "Getting yt-dlp's checksums"
-    Get-File "$ytdlpBase/yt-dlp.exe" (Join-Path $work 'yt-dlp.exe') 'Downloading the newest yt-dlp'
-    if (-not (Verified (Join-Path $work 'yt-dlp.exe') (Join-Path $work 'SHA2-256SUMS') 'yt-dlp.exe')) {
+    Get-File "$ytdlpBase/$ytdlpAsset" (Join-Path $work 'yt-dlp.exe') 'Downloading the newest yt-dlp'
+    if (-not (Verified (Join-Path $work 'yt-dlp.exe') (Join-Path $work 'SHA2-256SUMS') $ytdlpAsset)) {
       throw "The yt-dlp download doesn't match its published checksum, so nothing was changed."
     }
     Stop-Helper

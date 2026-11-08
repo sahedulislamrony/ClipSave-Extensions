@@ -5,8 +5,8 @@
 #   scripts/package-helper.sh <platform> <helper binary>
 #   scripts/package-helper.sh macos-arm64 helper/target/release/clipsave-helper
 #
-# Platforms: macos-arm64, macos-x86_64, linux-x86_64, windows-x86_64. Run helper/fetch-engine.sh for the same
-# platform first.
+# Platforms: macos-arm64, macos-x86_64, linux-x86_64, linux-arm64, windows-x86_64, windows-arm64. Run
+# helper/fetch-engine.sh for the same platform first.
 set -eu
 
 platform=$1

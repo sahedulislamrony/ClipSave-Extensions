@@ -9,7 +9,10 @@
 #   qjs               QuickJS-ng, the JavaScript runtime yt-dlp needs for YouTube; pinned below
 #
 #   helper/fetch-engine.sh             for this computer
-#   helper/fetch-engine.sh x86_64      macOS only: for the other kind of Mac (arm64 or x86_64)
+#   helper/fetch-engine.sh x86_64      for the other kind of processor (arm64 or x86_64) on the same system
+#
+# Platforms: macOS, Linux and Windows, each on arm64 and x86_64. QuickJS-ng has no Windows arm64 build, so
+# Windows on Arm gets its 32-bit x86 one, which Windows 10 and 11 on Arm both run through their emulation.
 #
 # macOS gets the unpacked yt-dlp release, not the single-file one. Browsers mark every file their child
 # processes create as quarantined, so the single-file build's Python library, which it unpacks each time it
@@ -25,7 +28,9 @@ qjs_sha256() {
     qjs-darwin-arm64) echo 91fe89916d3b0a6c01c4dc8382a99c3c1fd91ecfc214aa81ca051902bcce590d ;;
     qjs-darwin-x86_64) echo fa2c5dc78095daff566b32fab995ced12927875253b84216b91b834af2ef2b74 ;;
     qjs-linux-x86_64) echo 85ded23b9fabe8c1644fc40a8d2bbdd71157affcbd807359c618cc717ee24d7d ;;
+    qjs-linux-aarch64) echo 2c005c7171424a598d31c53c8dc4a0ae2e4958eb6fbb37908c885a307c78187c ;;
     qjs-windows-x86_64.exe) echo ff03398d74ea6e6bd3a8e58058f7003225abcac229d7d57775b7aaae812a49c7 ;;
+    qjs-windows-x86.exe) echo 79aa85a8208596dc04333e99726c254d43b9e814803f2100ea593341f2c95b0e ;;
   esac
 }
 
@@ -41,10 +46,6 @@ case "${1:-$host}" in
   x86_64 | amd64) arch=x86_64 ;;
   *) echo "Unsupported architecture: ${1:-$host}" >&2; exit 1 ;;
 esac
-if [ "$os" != macos ] && [ "$arch" != x86_64 ]; then
-  echo "On $os only x86_64 is supported so far." >&2
-  exit 1
-fi
 
 if command -v sha256sum >/dev/null 2>&1; then
   sha256() { sha256sum "$1" | awk '{ print $1 }'; }
@@ -118,22 +119,24 @@ base=https://github.com/yt-dlp/yt-dlp/releases/latest/download
 fetch "$base/SHA2-256SUMS" "$work/SHA2-256SUMS"
 fetch "$base/SHA2-256SUMS.sig" "$work/SHA2-256SUMS.sig"
 verify_signed "$work/SHA2-256SUMS" "$work/SHA2-256SUMS.sig"
-case $os in
-  macos) asset=yt-dlp_macos.zip ;;
-  linux) asset=yt-dlp_linux ;;
-  windows) asset=yt-dlp.exe ;;
+case $os-$arch in
+  macos-*) asset=yt-dlp_macos.zip ;;
+  linux-x86_64) asset=yt-dlp_linux ;;
+  linux-arm64) asset=yt-dlp_linux_aarch64 ;;
+  windows-x86_64) asset=yt-dlp.exe ;;
+  windows-arm64) asset=yt-dlp_arm64.exe ;;
 esac
 fetch "$base/$asset" "$work/$asset"
 verify "$work/$asset" "$(awk -v name="$asset" '$2 == name { print $1 }' "$work/SHA2-256SUMS")"
 case $os in
   macos) mkdir "$vendor/yt-dlp_macos" && unpack "$work/$asset" "$vendor/yt-dlp_macos" ;;
-  linux) mv "$work/$asset" "$vendor/yt-dlp" ;;
+  linux) mv "$work/$asset" "$vendor/yt-dlp" && chmod +x "$vendor/yt-dlp" ;;
   windows) mv "$work/$asset" "$vendor/yt-dlp.exe" ;;
 esac
 
 echo "Fetching ffmpeg..."
 if [ $os = windows ]; then
-  fetch_pinned ffmpeg-windows-x86_64 "$work/ffmpeg.zip"
+  fetch_pinned "ffmpeg-windows-$arch" "$work/ffmpeg.zip"
   unpack "$work/ffmpeg.zip" "$work/ffmpeg"
   cp "$work"/ffmpeg/*/bin/ffmpeg.exe "$work"/ffmpeg/*/bin/ffprobe.exe "$work"/ffmpeg/*/bin/*.dll "$vendor/"
 else
@@ -145,10 +148,13 @@ else
 fi
 
 echo "Fetching QuickJS..."
-case $os in
-  macos) [ $arch = x86_64 ] && asset=qjs-darwin-x86_64 || asset=qjs-darwin-arm64 ;;
-  linux) asset=qjs-linux-x86_64 ;;
-  windows) asset=qjs-windows-x86_64.exe ;;
+case $os-$arch in
+  macos-x86_64) asset="qjs-darwin-x86_64" ;;
+  macos-arm64) asset="qjs-darwin-arm64" ;;
+  linux-x86_64) asset="qjs-linux-x86_64" ;;
+  linux-arm64) asset="qjs-linux-aarch64" ;;
+  windows-x86_64) asset="qjs-windows-x86_64.exe" ;;
+  windows-arm64) asset="qjs-windows-x86.exe" ;;
 esac
 fetch "https://github.com/quickjs-ng/quickjs/releases/download/$QJS_VERSION/$asset" "$work/$asset"
 verify "$work/$asset" "$(qjs_sha256 "$asset")"
