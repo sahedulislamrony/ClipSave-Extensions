@@ -6,6 +6,8 @@ All notable changes to ClipSave for browsers are documented here. The format fol
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-11-08
+
 ### Added
 - **The helper runs on Arm Linux and Windows on Arm.** Releases now include `clipsave-helper-linux-arm64.tar.gz`
   and `clipsave-helper-windows-arm64.zip`, built on Arm machines, and the install commands pick them by
