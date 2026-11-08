@@ -93,8 +93,14 @@ verify_signed() {
     echo "  gpg isn't installed, so yt-dlp's signature wasn't checked." >&2
     return 0
   fi
-  mkdir -m 700 "$work/gnupg"
-  gpg --batch --quiet --homedir "$work/gnupg" --import "$here/yt-dlp-public.key" 2>/dev/null
+  # gpg wants its folder private. Windows (Git Bash) can't set that mode, and gpg only warns there.
+  mkdir "$work/gnupg"
+  chmod 700 "$work/gnupg" 2>/dev/null || true
+  gpg --batch --quiet --homedir "$work/gnupg" --import "$here/yt-dlp-public.key" 2>"$work/gpg.log" || {
+    echo "gpg couldn't read yt-dlp's key:" >&2
+    cat "$work/gpg.log" >&2
+    exit 1
+  }
   if ! gpg --batch --homedir "$work/gnupg" --status-fd 1 --verify "$2" "$1" 2>/dev/null |
     grep -q "^\[GNUPG:\] VALIDSIG $YTDLP_KEY "; then
     echo "yt-dlp's checksums don't carry yt-dlp's signature, nothing was installed." >&2
