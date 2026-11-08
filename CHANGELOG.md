@@ -16,6 +16,10 @@ All notable changes to ClipSave for browsers are documented here. The format fol
   update.
 - Every release checks that each packaged helper and its tools start on the machine it was built on.
 
+### Fixed
+- Opening the popup on a tab that isn't a web page, with the helper not installed yet, sometimes showed
+  "Open a page" instead of the install step.
+
 ## [1.3.1] - 2026-11-08
 
 ### Security
