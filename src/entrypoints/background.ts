@@ -32,6 +32,11 @@ export default defineBackground({
 
     const downloads: Downloads = new Downloads(
       (item) => {
+        // Checked again on every start, retries included, whoever stored the item.
+        if (!isWebUrl(item.url)) {
+          downloads.update(item.id, { status: 'failed', error: "This isn't a web link." });
+          return;
+        }
         try {
           helper.send({
             id: item.id,

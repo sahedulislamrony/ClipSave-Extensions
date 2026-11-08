@@ -82,7 +82,7 @@ pub fn reveal(path: &Path) -> std::io::Result<()> {
         open
     } else if cfg!(windows) {
         let mut explorer = Command::new("explorer");
-        explorer.arg(format!("/select,{}", plain(path).display()));
+        select(&mut explorer, path);
         explorer
     } else {
         let mut open = Command::new("xdg-open");
@@ -91,6 +91,19 @@ pub fn reveal(path: &Path) -> std::io::Result<()> {
     };
     // Explorer reports failure even when it opened the folder, so only a failed start counts.
     command.spawn().map(|_| ())
+}
+
+/// Explorer splits its switches at commas, so a file name holding one would select something else. The
+/// path goes in quotes, written as is; a Windows file name can't hold a quote.
+#[cfg(windows)]
+fn select(explorer: &mut Command, path: &Path) {
+    use std::os::windows::process::CommandExt;
+    explorer.raw_arg(format!("/select,\"{}\"", plain(path).display()));
+}
+
+#[cfg(not(windows))]
+fn select(explorer: &mut Command, path: &Path) {
+    explorer.arg(format!("/select,{}", plain(path).display()));
 }
 
 /// The start folder reaches the dialogs through the environment, never inside a script, so no folder

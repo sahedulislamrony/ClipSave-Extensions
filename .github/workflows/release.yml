@@ -6,7 +6,8 @@ name: Release
 # version that isn't newer publishes nothing. After a failed run, start it again from
 # Actions → Release → Run workflow on main; the same rules apply.
 #
-# Optional repository secrets (Settings → Secrets and variables → Actions):
+# Optional secrets of the "release" environment (Settings → Environments → release, with deployment branches
+# limited to main):
 #   AMO_JWT_ISSUER, AMO_JWT_SECRET   addons.mozilla.org API keys. When set, each release is submitted to
 #                                    Firefox Add-ons, and Firefox updates everyone once Mozilla approves it.
 #                                    Without them the Firefox upload is skipped.
@@ -31,12 +32,15 @@ permissions:
 jobs:
   plan:
     name: Plan
+    # Releases come from main only, also when started by hand: main is where the repository rules apply.
+    # Every other job needs this one, so on any other branch nothing runs.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.plan.outputs.version }}
       publish: ${{ steps.plan.outputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -67,10 +71,11 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
+          toolchain: stable
           targets: aarch64-apple-darwin, x86_64-apple-darwin
 
       # One archive per kind of Mac, each with that chip's ffmpeg and QuickJS.
@@ -78,12 +83,12 @@ jobs:
         run: |
           for arch in arm64 x86_64; do
             [ $arch = arm64 ] && target=aarch64-apple-darwin || target=x86_64-apple-darwin
-            cargo build --release --manifest-path helper/Cargo.toml --target $target
+            cargo build --release --locked --manifest-path helper/Cargo.toml --target $target
             sh helper/fetch-engine.sh $arch
             sh scripts/package-helper.sh macos-$arch helper/target/$target/release/clipsave-helper
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: helper-macos
           path: dist/clipsave-helper-macos-*.tar.gz
@@ -95,17 +100,19 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
 
       - name: Build and package with yt-dlp
         run: |
-          cargo build --release --manifest-path helper/Cargo.toml
+          cargo build --release --locked --manifest-path helper/Cargo.toml
           sh helper/fetch-engine.sh
           sh scripts/package-helper.sh linux-x86_64 helper/target/release/clipsave-helper
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: helper-linux
           path: dist/clipsave-helper-linux-x86_64.tar.gz
@@ -119,17 +126,19 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
 
       - name: Build and package with its tools
         run: |
-          cargo build --release --manifest-path helper/Cargo.toml
+          cargo build --release --locked --manifest-path helper/Cargo.toml
           sh helper/fetch-engine.sh
           sh scripts/package-helper.sh windows-x86_64 helper/target/release/clipsave-helper.exe
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: helper-windows
           path: dist/clipsave-helper-windows-x86_64.zip
@@ -139,17 +148,26 @@ jobs:
     needs: [plan, checks, helper-macos, helper-linux, helper-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Settings → Environments → release: limited to main, and holding the AMO_JWT_* secrets, so only this
+    # job on main can read them.
+    environment: release
     permissions:
       contents: write
+      # For the build attestations below.
+      id-token: write
+      attestations: write
     env:
       VERSION: ${{ needs.plan.outputs.version }}
-      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
-      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+      # Only whether the keys exist. The keys themselves reach the one step that signs, not npm ci or the build.
+      AMO_READY: ${{ secrets.AMO_JWT_ISSUER != '' && secrets.AMO_JWT_SECRET != '' }}
       AMO_CHANNEL: ${{ vars.AMO_CHANNEL || 'listed' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # gh uses GH_TOKEN below; nothing here pushes, so the write token isn't left in .git/config.
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           cache: npm
@@ -159,14 +177,17 @@ jobs:
       - name: Package the extension
         run: sh scripts/package-extension.sh
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: helper-*
           path: dist
           merge-multiple: true
 
       - name: Submit the Firefox add-on
-        if: env.AMO_JWT_ISSUER != '' && env.AMO_JWT_SECRET != ''
+        if: env.AMO_READY == 'true'
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
         # The GitHub release goes out either way: a listing that doesn't exist yet, or a review hiccup on
         # Firefox Add-ons, shows as a failed step here and is retried by hand on addons.mozilla.org.
         continue-on-error: true
@@ -194,6 +215,19 @@ jobs:
           sha256sum ClipSave-* clipsave-helper-* clipsave-extension-* install.sh install.ps1 > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
+      # A signed record that these exact files came from this workflow, this repository and this commit.
+      # Anyone can check one with `gh attestation verify <file> --repo <owner>/<repo>`.
+      - name: Attest where the files were built
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: |
+            dist/ClipSave-*
+            dist/clipsave-helper-*
+            dist/clipsave-extension-*
+            dist/install.sh
+            dist/install.ps1
+            dist/SHA256SUMS.txt
+
       - name: Write release notes
         run: |
           awk -v v="$VERSION" '
@@ -215,7 +249,8 @@ jobs:
           Extension: Firefox Add-ons for Firefox (updates itself). Chrome, Edge and Brave: the install command also
           puts the extension next to the helper; load that folder with **Load unpacked** and Settings updates it in
           one click. \`ClipSave-$VERSION-chrome-unpacked.zip\` is the same build, for loading by hand.
-          Verify any file with \`SHA256SUMS.txt\`.
+          Verify any file with \`SHA256SUMS.txt\`, or check where it was built with
+          \`gh attestation verify <file> --repo $GITHUB_REPOSITORY\`.
           EOF
 
       - name: Publish release

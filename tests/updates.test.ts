@@ -9,6 +9,7 @@ import {
   isDue,
   latestRelease,
   NO_UPDATE_STATE,
+  REPO_URL,
   type Release,
   type UpdateState,
 } from '@/lib/updates';
@@ -33,16 +34,33 @@ function reply(status: number, body: unknown) {
 
 describe('latestRelease', () => {
   it('reads the version and the files of the newest release', async () => {
+    const zip = `${REPO_URL}/releases/download/v1.2.0/ClipSave-1.2.0-chrome-unpacked.zip`;
     const release = await latestRelease(
       reply(200, {
         tag_name: 'v1.2.0',
-        html_url: 'https://github.com/x/releases/tag/v1.2.0',
+        html_url: `${REPO_URL}/releases/tag/v1.2.0`,
         published_at: '2026-11-10T00:00:00Z',
-        assets: [{ name: 'ClipSave-1.2.0-chrome-unpacked.zip', browser_download_url: 'https://dl/c.zip' }, { name: 'broken' }],
+        assets: [{ name: 'ClipSave-1.2.0-chrome-unpacked.zip', browser_download_url: zip }, { name: 'broken' }],
       }),
     );
     expect(release.version).toBe('1.2.0');
-    expect(release.assets).toEqual([{ name: 'ClipSave-1.2.0-chrome-unpacked.zip', url: 'https://dl/c.zip' }]);
+    expect(release.url).toBe(`${REPO_URL}/releases/tag/v1.2.0`);
+    expect(release.assets).toEqual([{ name: 'ClipSave-1.2.0-chrome-unpacked.zip', url: zip }]);
+  });
+
+  it('keeps only links into this repository', async () => {
+    const release = await latestRelease(
+      reply(200, {
+        tag_name: 'v1.2.0',
+        html_url: 'https://evil.example/releases/tag/v1.2.0',
+        assets: [
+          { name: 'ClipSave-1.2.0-chrome-unpacked.zip', browser_download_url: 'https://evil.example/c.zip' },
+          { name: 'ClipSave-1.2.0-firefox.zip', browser_download_url: `javascript:alert(1)//${REPO_URL}/releases/download/` },
+        ],
+      }),
+    );
+    expect(release.url).toBe(`${REPO_URL}/releases/latest`);
+    expect(release.assets).toEqual([]);
   });
 
   it('explains failures in plain words', async () => {

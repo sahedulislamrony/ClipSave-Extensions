@@ -14,7 +14,8 @@ export default defineConfig({
     artifactTemplate: 'ClipSave-{{version}}-{{browser}}.zip',
     sourcesTemplate: 'ClipSave-{{version}}-sources.zip',
     // AMO reviewers get a source zip. The signing key must never end up in it.
-    excludeSources: ['keys/**', 'helper/**', 'dist/**', 'e2e/screenshots/**', '.impeccable/**'],
+    // This list is all that keeps files out: WXT doesn't read .gitignore here.
+    excludeSources: ['keys/**', '**/*.pem', '**/*.key', 'helper/**', 'dist/**', 'e2e/screenshots/**', '.impeccable/**'],
   },
   manifest: ({ browser, mode }) => ({
     name: 'ClipSave',

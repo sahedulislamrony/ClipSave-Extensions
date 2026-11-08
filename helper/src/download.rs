@@ -5,6 +5,7 @@ use crate::platform;
 use crate::protocol::{Outbox, Quality};
 use crate::settings::{self, FolderKind};
 use serde_json::{json, Value};
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
@@ -44,8 +45,8 @@ impl Jobs {
                 platform::terminate(job.pid);
             }
             None => {
-                if is_valid_id(id) {
-                    let _ = fs::remove_dir_all(partial_root().join(id));
+                if let Some(root) = partial_root().filter(|_| is_valid_id(id)) {
+                    let _ = fs::remove_dir_all(root.join(id));
                 }
             }
         }
@@ -68,10 +69,9 @@ pub fn is_valid_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
-fn partial_root() -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join("ClipSave/partial")
+/// Never the shared temp folder, where another account could have put something in the way first.
+fn partial_root() -> Option<PathBuf> {
+    dirs::cache_dir().map(|dir| dir.join("ClipSave/partial"))
 }
 
 pub fn video_dir() -> PathBuf {
@@ -83,7 +83,7 @@ pub fn audio_dir() -> PathBuf {
 }
 
 pub fn clean_old_partials() {
-    let Ok(entries) = fs::read_dir(partial_root()) else {
+    let Some(Ok(entries)) = partial_root().map(fs::read_dir) else {
         return;
     };
     let cutoff = SystemTime::now() - KEEP_PARTIAL;
@@ -125,7 +125,24 @@ fn safe_name(text: &str, max: usize) -> Option<String> {
     let cleaned = clean(text, max);
     // Windows drops trailing dots and spaces, and a leading dot hides a file elsewhere.
     let name = cleaned.trim().trim_matches('.').trim();
-    (!name.is_empty()).then(|| name.to_string())
+    if name.is_empty() {
+        return None;
+    }
+    // `CON`, `nul.txt` and the like name devices on Windows, not files: what's before the first dot counts.
+    let stem = name.split('.').next().unwrap_or(name);
+    Some(if is_device_name(stem.trim_end()) {
+        format!("{stem}_{}", &name[stem.len()..])
+    } else {
+        name.to_string()
+    })
+}
+
+fn is_device_name(stem: &str) -> bool {
+    let upper = stem.to_ascii_uppercase();
+    matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ((upper.starts_with("COM") || upper.starts_with("LPT"))
+            && upper.len() == 4
+            && matches!(upper.as_bytes()[3], b'1'..=b'9'))
 }
 
 /// Turns a playlist title into one folder name.
@@ -146,6 +163,25 @@ pub fn file_prefix(text: &str) -> String {
 /// `%` starts a field in a yt-dlp output template, so a literal one is written twice.
 fn literal(text: &str) -> String {
     text.replace('%', "%%")
+}
+
+/// yt-dlp expands `$VAR`, `${VAR}` and a leading `~` in an output template before it fills in the
+/// fields, so a title like `${TMPDIR}x` would become a path outside the ClipSave folder. Look-alike
+/// characters keep such a name readable without meaning anything to yt-dlp.
+fn inert(text: &str) -> String {
+    let text = text.replace('$', "＄");
+    match text.strip_prefix('~') {
+        Some(rest) => format!("～{rest}"),
+        None => text,
+    }
+}
+
+/// `path` is `dir` or inside it, once links are followed.
+fn is_inside(path: &Path, dir: &Path) -> bool {
+    match (path.canonicalize(), dir.canonicalize()) {
+        (Ok(path), Ok(dir)) => path.starts_with(dir),
+        _ => false,
+    }
 }
 
 /// `name`, or `name (2)`, `name (3)`… when a file of that name is already in `dir`. The extension isn't
@@ -193,9 +229,9 @@ fn output_template(target: &Path, naming: &Naming) -> String {
     match naming.name.as_deref().and_then(file_name) {
         Some(name) => format!(
             "{}.%(ext)s",
-            literal(&unused_name(target, &format!("{prefix}{name}")))
+            literal(&unused_name(target, &inert(&format!("{prefix}{name}"))))
         ),
-        None => format!("{}%(title).100B [%(id)s].%(ext)s", literal(&prefix)),
+        None => format!("{}%(title).100B [%(id)s].%(ext)s", literal(&inert(&prefix))),
     }
 }
 
@@ -255,7 +291,9 @@ fn run(
         Some(name) => base.join(name),
         None => base,
     };
-    let partial = partial_root().join(id);
+    let partial = partial_root()
+        .ok_or("There's no cache folder to download into.")?
+        .join(id);
     fs::create_dir_all(&target)
         .map_err(|e| format!("Could not create {}: {e}", target.display()))?;
     fs::create_dir_all(&partial).map_err(|e| format!("Could not create a work folder: {e}"))?;
@@ -271,6 +309,8 @@ fn run(
         .arg("--paths")
         .arg(format!("temp:{}", partial.display()))
         .args(["-o", &output_template(&target, naming)])
+        // The title is printed on one line below, and a line break in it could pass for another line.
+        .args(["--replace-in-metadata", "title", r"[\r\n]+", " "])
         .args(untitled_cleanup(naming))
         .args(["--progress", "--newline"])
         .args(["--print", &format!("before_dl:{START}%(format_id)s|%(filesize,filesize_approx)s|%(title)s")])
@@ -311,7 +351,17 @@ fn run(
         pid: child.id(),
         cancelled: AtomicBool::new(false),
     });
-    jobs.0.lock().unwrap().insert(id.to_string(), job.clone());
+    // Two jobs with one ID would share a work folder, and the first to end would hide the other.
+    match jobs.0.lock().unwrap().entry(id.to_string()) {
+        Entry::Occupied(_) => {
+            platform::terminate(job.pid);
+            let _ = child.wait();
+            return Err("This download is already running.".to_string());
+        }
+        Entry::Vacant(slot) => {
+            slot.insert(job.clone());
+        }
+    }
 
     let mut stderr = child.stderr.take().expect("stderr is piped");
     let errors = thread::spawn(move || {
@@ -352,6 +402,12 @@ fn run(
     match (status.success(), saved) {
         (true, Some(path)) => {
             let _ = fs::remove_dir_all(&partial);
+            if !is_inside(Path::new(&path), &target) {
+                return Err(format!(
+                    "yt-dlp saved the file outside {}.",
+                    target.display()
+                ));
+            }
             Ok(Some(path))
         }
         (true, None) => Err("yt-dlp finished without saving a file.".to_string()),
@@ -528,6 +584,64 @@ mod tests {
             ),
             "%(title).100B [%(id)s].%(ext)s"
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn titles_cannot_expand_into_a_path_outside_the_folder() {
+        let dir = std::env::temp_dir().join(format!("clipsave-expand-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let named = |name: &str, prefix: Option<&str>| {
+            output_template(
+                &dir,
+                &Naming {
+                    name: Some(name.into()),
+                    prefix: prefix.map(Into::into),
+                    folder: None,
+                },
+            )
+        };
+        assert_eq!(named("${TMPDIR}x", None), "＄{TMPDIR}x.%(ext)s");
+        assert_eq!(named("$HOME", None), "＄HOME.%(ext)s");
+        assert_eq!(named("~root", None), "～root.%(ext)s");
+        assert_eq!(named("a ~ b $5", Some("~ ")), "～ a ~ b ＄5.%(ext)s");
+        let untitled = output_template(
+            &dir,
+            &Naming {
+                prefix: Some("$X".into()),
+                ..Naming::default()
+            },
+        );
+        assert_eq!(untitled, "＄X%(title).100B [%(id)s].%(ext)s");
+        for template in [named("${A}${B}", Some("$C")), untitled] {
+            assert!(
+                !template.contains('$') && !template.starts_with('~'),
+                "{template}"
+            );
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn device_names_are_not_used_as_names() {
+        assert_eq!(folder_name("CON").as_deref(), Some("CON_"));
+        assert_eq!(file_name("nul.backup").as_deref(), Some("nul_.backup"));
+        assert_eq!(file_name("com7").as_deref(), Some("com7_"));
+        assert_eq!(file_name("COM10").as_deref(), Some("COM10"));
+        assert_eq!(file_name("Console").as_deref(), Some("Console"));
+    }
+
+    #[test]
+    fn saved_files_must_be_inside_the_folder() {
+        let dir = std::env::temp_dir().join(format!("clipsave-inside-{}", std::process::id()));
+        let target = dir.join("ClipSave");
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("in.mp4"), b"").unwrap();
+        fs::write(dir.join("out.mp4"), b"").unwrap();
+        assert!(is_inside(&target.join("in.mp4"), &target));
+        assert!(!is_inside(&dir.join("out.mp4"), &target));
+        assert!(!is_inside(&target.join("../out.mp4"), &target));
+        assert!(!is_inside(&target.join("missing.mp4"), &target));
         let _ = fs::remove_dir_all(&dir);
     }
 

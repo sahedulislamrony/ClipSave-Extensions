@@ -67,7 +67,7 @@ fn run(
     // A flat playlist lists its videos without opening each one, so a long playlist reads in
     // seconds. It changes nothing for a single video.
     command.args(["-J", "--flat-playlist"]);
-    let end = start + PAGE_SIZE - 1;
+    let end = start.saturating_add(PAGE_SIZE - 1);
     command.args(["--playlist-items", &format!("{start}:{end}")]);
     if playlist {
         // Comes after the shared `--no-playlist`, so it wins.
@@ -108,13 +108,15 @@ fn seconds(value: &Value) -> Option<u64> {
 
 /// The best thumbnail yt-dlp lists comes last.
 fn thumbnail(value: &Value) -> Option<String> {
-    text(value, "thumbnail").or_else(|| {
-        value["thumbnails"]
-            .as_array()?
-            .iter()
-            .rev()
-            .find_map(|t| text(t, "url").filter(|u| is_allowed_url(u)))
-    })
+    text(value, "thumbnail")
+        .filter(|u| is_allowed_url(u))
+        .or_else(|| {
+            value["thumbnails"]
+                .as_array()?
+                .iter()
+                .rev()
+                .find_map(|t| text(t, "url").filter(|u| is_allowed_url(u)))
+        })
 }
 
 fn small_thumbnail(value: &Value) -> Option<String> {
@@ -157,7 +159,7 @@ fn parse_playlist(url: &str, info: &Value, start: u64) -> PlaylistInfo {
         .collect();
     let total = info["playlist_count"].as_u64().filter(|n| *n > 0);
     // A short page is the last one; so is reaching the length the site reports.
-    let next = start + PAGE_SIZE;
+    let next = start.saturating_add(PAGE_SIZE);
     let next_start =
         (raw.len() as u64 >= PAGE_SIZE && total.is_none_or(|t| next <= t)).then_some(next);
     PlaylistInfo {
@@ -218,7 +220,7 @@ fn parse(url: &str, info: &Value) -> MediaInfo {
             text(info, "webpage_url").as_deref().unwrap_or(url),
         ),
         uploader,
-        thumbnail: text(info, "thumbnail"),
+        thumbnail: thumbnail(info),
         duration_sec: seconds(info),
         options: options(formats(info)),
     }

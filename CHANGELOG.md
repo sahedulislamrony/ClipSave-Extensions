@@ -6,6 +6,30 @@ All notable changes to ClipSave for browsers are documented here. The format fol
 
 ## [Unreleased]
 
+### Security
+- **A video's title can no longer put a saved file outside the ClipSave folder.** yt-dlp expands `$VAR`,
+  `${VAR}` and a leading `~` in file names, so a title like `${TMPDIR}x` could land somewhere else. Those
+  characters are now saved as look-alikes (`＄`, `～`), and the helper refuses any file yt-dlp reports outside
+  the folder.
+- **The helper no longer accepts the old Firefox add-on ID** `clipsave@clipsave.link`, which belongs to someone
+  else on Firefox Add-ons. Only `clipsave@sahedulislamrony.github.io` can talk to it.
+- One-click updates download the installer in full before running it, and no download (updates, the
+  installer, release builds) follows a redirect off https.
+- Thumbnails from sites must be web links. Settings only links to files in ClipSave's own releases.
+- Folder and file names that Windows reserves for devices (`CON`, `NUL`, `COM1`…) get a `_`, two downloads
+  can't share one job, and the helper no longer falls back to the shared temp folder for its settings,
+  partial files or update log.
+- "Show in folder" on Windows selects the right file even when its name holds a comma.
+- Releases only publish from `main`, through a `release` environment that holds the Firefox Add-ons keys, and
+  those keys reach only the step that signs. Actions are pinned to commits (kept current by Dependabot), and
+  Rust builds use the committed `Cargo.lock`.
+- **The ffmpeg in each release is pinned** to exact builds and SHA-256s in `helper/engine.lock`
+  (`node scripts/pin-engines.mjs` moves to newer ones), and **the bundled yt-dlp must carry yt-dlp's GPG
+  signature**.
+- Every release file comes with a build attestation: `gh attestation verify <file> --repo
+  sahedulislamrony/ClipSave-Extensions` shows it was built by this repository's Release workflow.
+- CI runs `npm audit` and `cargo audit` on every pull request, and Dependabot opens security updates.
+
 ## [1.3.0] - 2026-11-07
 
 ### Added

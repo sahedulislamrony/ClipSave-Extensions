@@ -157,4 +157,4 @@ administrator rights are needed.
   `key` in `wxt.config.ts`. A Chrome Web Store listing gets its own ID, which has to be added to
   `CHROME_IDS` in `helper/src/install.rs`.
 - **Firefox** allows it by add-on ID, `clipsave@sahedulislamrony.github.io` (`allowed_extensions`). Builds before 1.2.0 used
-  `clipsave@clipsave.link`, which is taken on Firefox Add-ons; the helper allows both.
+  `clipsave@clipsave.link`, which is taken on Firefox Add-ons by someone else, so the helper no longer allows it.

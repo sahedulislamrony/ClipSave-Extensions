@@ -1,10 +1,11 @@
 #!/bin/sh
 # Downloads everything the helper runs into helper/vendor, so users install nothing else. Each file is checked
-# against a checksum before it's kept:
+# before it's kept:
 #
-#   yt-dlp            official release                  checked against its SHA2-256SUMS
-#   ffmpeg, ffprobe   macOS, Linux: ffmpeg.martin-riedl.de   checked against the .sha256 beside each file
-#                     Windows: yt-dlp/FFmpeg-Builds     checked against its checksums.sha256
+#   yt-dlp            newest official release           its SHA2-256SUMS, which must carry yt-dlp's GPG signature
+#                                                       (key in yt-dlp-public.key; needs gpg, required in CI)
+#   ffmpeg, ffprobe   macOS, Linux: ffmpeg.martin-riedl.de   pinned builds and SHA-256s in engine.lock, which
+#                     Windows: yt-dlp/FFmpeg-Builds          `node scripts/pin-engines.mjs` updates
 #   qjs               QuickJS-ng, the JavaScript runtime yt-dlp needs for YouTube; pinned below
 #
 #   helper/fetch-engine.sh             for this computer
@@ -14,6 +15,9 @@
 # processes create as quarantined, so the single-file build's Python library, which it unpacks each time it
 # starts, is refused by macOS when a browser is the parent.
 set -eu
+
+# yt-dlp's signing key (Simon Sawicki, yt-dlp signing key), as in yt-dlp-public.key.
+YTDLP_KEY=AC0CBBE6848D6A873464AF4E57CF65933B5A7581
 
 QJS_VERSION=v0.18.0
 qjs_sha256() {
@@ -47,7 +51,8 @@ if command -v sha256sum >/dev/null 2>&1; then
 else
   sha256() { shasum -a 256 "$1" | awk '{ print $1 }'; }
 fi
-fetch() { curl -fsSL --retry 3 -o "$2" "$1"; }
+# https only, redirects included, so nothing on the way can swap a file and its checksum together.
+fetch() { curl -fsSL --proto =https --proto-redir =https --retry 3 -o "$2" "$1"; }
 verify() {
   if [ -z "$2" ] || [ "$2" != "$(sha256 "$1")" ]; then
     echo "Checksum mismatch for $(basename "$1"), nothing was installed." >&2
@@ -62,7 +67,41 @@ unpack() {
   fi
 }
 
-vendor="$(cd "$(dirname "$0")" && pwd)/vendor"
+here=$(cd "$(dirname "$0")" && pwd)
+vendor="$here/vendor"
+lock="$here/engine.lock"
+
+# The pinned link or SHA-256 ($2 = 2 or 3) of one build in engine.lock.
+pinned() { awk -v name="$1" -v field="$2" '$1 == name { print $field }' "$lock"; }
+# Downloads the build engine.lock pins as $1 to $2, and checks it.
+fetch_pinned() {
+  url=$(pinned "$1" 2)
+  [ -n "$url" ] || { echo "engine.lock pins no $1 build." >&2; exit 1; }
+  fetch "$url" "$2" || {
+    echo "The pinned $1 build is gone. Run 'node scripts/pin-engines.mjs' to pin a newer one." >&2
+    exit 1
+  }
+  verify "$2" "$(pinned "$1" 3)"
+}
+# Checks that $1 carries yt-dlp's own signature $2.
+verify_signed() {
+  if ! command -v gpg >/dev/null 2>&1; then
+    if [ -n "${CI:-}" ]; then
+      echo "gpg is needed to check yt-dlp's signature." >&2
+      exit 1
+    fi
+    echo "  gpg isn't installed, so yt-dlp's signature wasn't checked." >&2
+    return 0
+  fi
+  mkdir -m 700 "$work/gnupg"
+  gpg --batch --quiet --homedir "$work/gnupg" --import "$here/yt-dlp-public.key" 2>/dev/null
+  if ! gpg --batch --homedir "$work/gnupg" --status-fd 1 --verify "$2" "$1" 2>/dev/null |
+    grep -q "^\[GNUPG:\] VALIDSIG $YTDLP_KEY "; then
+    echo "yt-dlp's checksums don't carry yt-dlp's signature, nothing was installed." >&2
+    exit 1
+  fi
+}
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 rm -rf "$vendor"
@@ -71,6 +110,8 @@ mkdir -p "$vendor"
 echo "Fetching yt-dlp..."
 base=https://github.com/yt-dlp/yt-dlp/releases/latest/download
 fetch "$base/SHA2-256SUMS" "$work/SHA2-256SUMS"
+fetch "$base/SHA2-256SUMS.sig" "$work/SHA2-256SUMS.sig"
+verify_signed "$work/SHA2-256SUMS" "$work/SHA2-256SUMS.sig"
 case $os in
   macos) asset=yt-dlp_macos.zip ;;
   linux) asset=yt-dlp_linux ;;
@@ -86,22 +127,12 @@ esac
 
 echo "Fetching ffmpeg..."
 if [ $os = windows ]; then
-  builds=https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest
-  asset=ffmpeg-master-latest-win64-gpl-shared.zip
-  fetch "$builds/checksums.sha256" "$work/checksums.sha256"
-  fetch "$builds/$asset" "$work/$asset"
-  verify "$work/$asset" "$(awk -v name="$asset" '$2 == name { print $1 }' "$work/checksums.sha256")"
-  unpack "$work/$asset" "$work/ffmpeg"
+  fetch_pinned ffmpeg-windows-x86_64 "$work/ffmpeg.zip"
+  unpack "$work/ffmpeg.zip" "$work/ffmpeg"
   cp "$work"/ffmpeg/*/bin/ffmpeg.exe "$work"/ffmpeg/*/bin/ffprobe.exe "$work"/ffmpeg/*/bin/*.dll "$vendor/"
 else
-  [ $arch = x86_64 ] && riedl_arch=amd64 || riedl_arch=arm64
   for tool in ffmpeg ffprobe; do
-    # The permanent link redirects to a versioned file, and the checksum sits beside that file.
-    url=$(curl -fsS -o /dev/null -w '%{redirect_url}' "https://ffmpeg.martin-riedl.de/redirect/latest/$os/$riedl_arch/release/$tool.zip")
-    [ -n "$url" ] || { echo "Couldn't find the latest $tool build." >&2; exit 1; }
-    fetch "$url" "$work/$tool.zip"
-    fetch "$url.sha256" "$work/$tool.zip.sha256"
-    verify "$work/$tool.zip" "$(awk '{ print $1 }' "$work/$tool.zip.sha256")"
+    fetch_pinned "$tool-$os-$arch" "$work/$tool.zip"
     unpack "$work/$tool.zip" "$vendor"
     chmod +x "$vendor/$tool"
   done

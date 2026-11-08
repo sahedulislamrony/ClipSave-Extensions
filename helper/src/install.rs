@@ -9,12 +9,10 @@ use std::path::{Path, PathBuf};
 
 pub const HOST_NAME: &str = "link.clipsave.helper";
 const DESCRIPTION: &str = "ClipSave Helper";
-/// The Firefox add-on's ID, the one on Firefox Add-ons. Builds before 1.2.0 used the second, which is
-/// taken on Firefox Add-ons; it stays allowed so those installs keep working until they update.
-const FIREFOX_IDS: &[&str] = &[
-    "clipsave@sahedulislamrony.github.io",
-    "clipsave@clipsave.link",
-];
+/// The Firefox add-on's ID, the one on Firefox Add-ons. Builds before 1.2.0 used `clipsave@clipsave.link`,
+/// which is taken on Firefox Add-ons by someone else, so it is no longer allowed: an add-on signed under it
+/// could otherwise talk to the helper.
+const FIREFOX_IDS: &[&str] = &["clipsave@sahedulislamrony.github.io"];
 
 /// Unpacked builds. Add the Chrome Web Store ID here once the listing has one.
 const CHROME_IDS: [&str; 1] = ["engejhilbedikenhabjndbpgpdhaedge"];
@@ -367,7 +365,10 @@ mod tests {
             value["allowed_extensions"][0],
             "clipsave@sahedulislamrony.github.io"
         );
-        assert_eq!(value["allowed_extensions"][1], "clipsave@clipsave.link");
+        assert_eq!(
+            value["allowed_extensions"].as_array().map(Vec::len),
+            Some(1)
+        );
         assert!(value.get("allowed_origins").is_none());
     }
 

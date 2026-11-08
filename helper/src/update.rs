@@ -22,24 +22,23 @@ pub enum UpdateKind {
     Ytdlp,
 }
 
-fn work_dir() -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join("ClipSave")
+/// Never the shared temp folder, where another account could have put a link in place of the log.
+fn work_dir() -> Option<PathBuf> {
+    dirs::cache_dir().map(|dir| dir.join("ClipSave"))
 }
 
 /// The installer writes "ok <what>" or "failed <why>" here when it ends.
-fn result_file() -> PathBuf {
-    work_dir().join("update-result.txt")
+fn result_file() -> Option<PathBuf> {
+    work_dir().map(|dir| dir.join("update-result.txt"))
 }
 
-pub fn log_file() -> PathBuf {
-    work_dir().join("update.log")
+pub fn log_file() -> Option<PathBuf> {
+    work_dir().map(|dir| dir.join("update.log"))
 }
 
 /// How the last update ended, for Settings: `{ ok, message, at }`, `at` in seconds since 1970.
 pub fn last_result() -> Option<Value> {
-    let file = result_file();
+    let file = result_file()?;
     let text = fs::read_to_string(&file).ok()?;
     let line = text.trim();
     let (status, message) = line.split_once(' ').unwrap_or((line, ""));
@@ -67,13 +66,15 @@ fn release_base() -> String {
 /// Starts the installer and returns once it's running. With `on_finished`, waits for it in the background
 /// and calls it when it ends (where the system lets the helper wait for it).
 pub fn start(kind: UpdateKind, on_finished: impl FnOnce() + Send + 'static) -> Result<(), String> {
-    fs::create_dir_all(work_dir()).map_err(|e| format!("Could not prepare the update: {e}"))?;
-    let _ = fs::remove_file(result_file());
+    let dir = work_dir().ok_or("There's no cache folder to prepare the update in.")?;
+    let (result, log_path) = (dir.join("update-result.txt"), dir.join("update.log"));
+    fs::create_dir_all(&dir).map_err(|e| format!("Could not prepare the update: {e}"))?;
+    let _ = fs::remove_file(&result);
     let log =
-        fs::File::create(log_file()).map_err(|e| format!("Could not prepare the update: {e}"))?;
+        fs::File::create(&log_path).map_err(|e| format!("Could not prepare the update: {e}"))?;
     let errors = log.try_clone().map_err(|e| e.to_string())?;
 
-    let mut command = installer(kind);
+    let mut command = installer(kind, &result, &log_path);
     command
         .stdin(Stdio::null())
         .stdout(Stdio::from(log))
@@ -89,8 +90,7 @@ pub fn start(kind: UpdateKind, on_finished: impl FnOnce() + Send + 'static) -> R
 }
 
 #[cfg(unix)]
-fn installer(kind: UpdateKind) -> Command {
-    let result = result_file();
+fn installer(kind: UpdateKind, result: &std::path::Path, _log: &std::path::Path) -> Command {
     let mut args: Vec<String> = vec![
         "--from-helper".into(),
         "--result".into(),
@@ -107,10 +107,17 @@ fn installer(kind: UpdateKind) -> Command {
             sh
         }
         None => {
-            // The link and the options are arguments, never part of the script text.
+            // The link and the options are arguments, never part of the script text. The installer is
+            // downloaded whole before it runs, so a dropped connection can't run half of it, and a
+            // redirect can't move it off https.
             let mut sh = Command::new("/bin/sh");
-            sh.args(["-c", r#"curl -fsSL "$0" | sh -s -- "$@""#])
-                .arg(format!("{}/install.sh", release_base()));
+            sh.args([
+                "-c",
+                r#"f=$(mktemp) || exit 1
+trap 'rm -f "$f"' EXIT
+curl -fsSL --proto-redir =https -o "$f" "$0" && sh "$f" "$@""#,
+            ])
+            .arg(format!("{}/install.sh", release_base()));
             sh
         }
     };
@@ -129,7 +136,7 @@ fn installer(kind: UpdateKind) -> Command {
 /// Windows stops a browser's helper together with everything it started, so the installer is started
 /// by Windows itself (WMI) instead, and outlives the helper it's about to replace.
 #[cfg(windows)]
-fn installer(kind: UpdateKind) -> Command {
+fn installer(kind: UpdateKind, result: &std::path::Path, log: &std::path::Path) -> Command {
     let quote = |text: &str| format!("'{}'", text.replace('\'', "''"));
     let mut script = String::new();
     if let Ok(url) = std::env::var("CLIPSAVE_RELEASE_URL") {
@@ -138,13 +145,13 @@ fn installer(kind: UpdateKind) -> Command {
     script.push_str(&format!(
         "& ([scriptblock]::Create((Invoke-RestMethod {}))) -FromHelper -Result {}{} *> {}",
         quote(&format!("{}/install.ps1", release_base())),
-        quote(&result_file().display().to_string()),
+        quote(&result.display().to_string()),
         if kind == UpdateKind::Ytdlp {
             " -YtDlpOnly"
         } else {
             ""
         },
-        quote(&log_file().display().to_string()),
+        quote(&log.display().to_string()),
     ));
     // Base64 of UTF-16, so nothing in the script needs quoting on the command line.
     let encoded: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
