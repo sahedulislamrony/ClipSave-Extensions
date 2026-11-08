@@ -7,8 +7,8 @@ ClipSave has two parts:
    tools, so the helper does it for them. It comes with everything it needs ([yt-dlp](https://github.com/yt-dlp/yt-dlp),
    ffmpeg and a JavaScript runtime), so there's nothing else to install.
 
-Works on **macOS** (Apple silicon and Intel), **Windows 10 and 11** (64-bit) and **64-bit Linux**, with
-**Chrome, Edge, Brave and Firefox**.
+Works on **macOS** (Apple silicon and Intel), **Windows 10 and 11** (x64 or Arm) and **64-bit Linux** (x86_64
+or Arm), with **Chrome, Edge, Brave and Firefox**.
 
 ## In short
 

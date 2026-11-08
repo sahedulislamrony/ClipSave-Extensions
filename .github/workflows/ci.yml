@@ -89,7 +89,9 @@ jobs:
         include:
           - { name: macOS, os: macos-latest }
           - { name: Linux, os: ubuntu-22.04 }
+          - { name: Linux arm64, os: ubuntu-22.04-arm }
           - { name: Windows, os: windows-latest }
+          - { name: Windows arm64, os: windows-11-arm }
     defaults:
       run:
         working-directory: helper

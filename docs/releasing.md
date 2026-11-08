@@ -29,7 +29,7 @@ The rules are enforced by two GitHub rulesets ([`.github/rulesets`](../.github/r
 
 | Workflow | When | Check name(s) |
 |---|---|---|
-| `ci.yml` | pull requests into `dev`/`main`, pushes to `main` | **Extension**, **Helper (macOS)**, **Helper (Linux)**, **Helper (Windows)**, **Browser tests (macOS)**, **Browser tests (Windows)** |
+| `ci.yml` | pull requests into `dev`/`main`, pushes to `main` | **Extension**, **Helper (macOS)**, **Helper (Linux)**, **Helper (Linux arm64)**, **Helper (Windows)**, **Helper (Windows arm64)**, **Browser tests (macOS)**, **Browser tests (Windows)** |
 | `codeql.yml` | pull requests into `dev`/`main`, pushes to `main`, weekly | **Analyze (javascript-typescript)**, **Analyze (rust)**, **Analyze (actions)** |
 | `branch-rules.yml` | pull requests into `dev`/`main` | **Branch rules**: `<username>/<topic>` → `dev`, only `dev` → `main` |
 | `release-check.yml` | pull requests into `main` | **Release readiness**: if `release.json` changed, a newer version, a changelog entry and release zips that build; otherwise passes and says nothing will be released |
@@ -38,8 +38,8 @@ The rules are enforced by two GitHub rulesets ([`.github/rulesets`](../.github/r
 What the checks run:
 
 - **Extension:** versions agree, type check, unit tests, both builds, Firefox add-on lint.
-- **Helper (macOS / Linux / Windows):** `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` (unit
-  tests everywhere, protocol tests on macOS and Linux).
+- **Helper (macOS / Linux / Windows, and Linux and Windows on arm64):** `cargo fmt --check`, `cargo clippy -D
+  warnings`, `cargo test` (unit tests everywhere, protocol tests on macOS and Linux).
 - **Browser tests (macOS / Windows):** builds everything with the same bundled tools a release has and runs
   `npm run e2e` against real Chrome and Firefox.
 
@@ -74,8 +74,10 @@ release*, and the Release workflow doesn't start.
 | `install.ps1` | the helper installer for Windows (`irm … \| iex`) |
 | `clipsave-helper-macos-arm64.tar.gz` | the helper for Apple silicon Macs, with yt-dlp, ffmpeg and QuickJS |
 | `clipsave-helper-macos-x86_64.tar.gz` | the helper for Intel Macs, with its tools |
-| `clipsave-helper-linux-x86_64.tar.gz` | the helper for 64-bit Linux, with its tools |
-| `clipsave-helper-windows-x86_64.zip` | the helper for 64-bit Windows, with its tools |
+| `clipsave-helper-linux-x86_64.tar.gz` | the helper for 64-bit Linux (x86_64), with its tools |
+| `clipsave-helper-linux-arm64.tar.gz` | the helper for 64-bit Arm Linux (aarch64), with its tools |
+| `clipsave-helper-windows-x86_64.zip` | the helper for 64-bit Windows (x64), with its tools |
+| `clipsave-helper-windows-arm64.zip` | the helper for Windows on Arm, with its tools (QuickJS is the x86 build, run through Windows' emulation) |
 | `ClipSave-x.y.z-chrome-unpacked.zip` | Chrome, Edge, Brave: **Load unpacked** (fixed ID that matches the helper) |
 | `ClipSave-x.y.z-chrome.zip` | the Chrome build without the development key; not published, since the Chrome Web Store doesn't allow YouTube downloads |
 | `ClipSave-x.y.z-firefox.zip` | upload to Firefox Add-ons, or load temporarily |

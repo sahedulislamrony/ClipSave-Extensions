@@ -32,8 +32,9 @@ cd ..
 ```
 
 - `fetch-engine.sh` downloads yt-dlp, ffmpeg/ffprobe and QuickJS into `helper/vendor` (about 250 MB unpacked),
-  checking each against its published or pinned checksum. Run it again to update them. On macOS,
-  `fetch-engine.sh x86_64` fetches the Intel tools instead (used when packaging releases).
+  checking each against its published or pinned checksum. Run it again to update them.
+  `fetch-engine.sh x86_64` or `fetch-engine.sh arm64` fetches the tools for that processor instead (used when
+  packaging releases).
 - `--install` registers *this* build of the helper with your browsers (`--browsers chrome,firefox` for just
   those). Run it again if you move the folder. `--uninstall` removes the registration.
 - To try the installers without touching your own install, serve a release's files locally and point them at

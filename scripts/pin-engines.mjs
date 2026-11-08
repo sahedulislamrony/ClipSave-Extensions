@@ -47,24 +47,26 @@ async function riedl(os, arch, tool) {
 }
 
 /** Windows: the newest dated release, never the moving "latest" one. */
-async function windows() {
-  const releases = await (await get(`https://api.github.com/repos/${BUILDS}/releases?per_page=20`)).json();
+async function windows(releases, arch) {
+  const kind = arch === 'x86_64' ? 'win64' : 'winarm64';
   const release = releases.find((r) => r.tag_name?.startsWith('autobuild-'));
   if (!release) throw new Error('No dated FFmpeg-Builds release found');
-  const zip = release.assets.find((a) => /^ffmpeg-N-.+-win64-gpl-shared\.zip$/.test(a.name));
+  const zip = release.assets.find((a) => a.name.startsWith('ffmpeg-N-') && a.name.endsWith(`-${kind}-gpl-shared.zip`));
   const sums = release.assets.find((a) => a.name === 'checksums.sha256');
-  if (!zip || !sums) throw new Error(`${release.tag_name} has no win64 build or checksums`);
+  if (!zip || !sums) throw new Error(`${release.tag_name} has no ${kind} build or checksums`);
   const prefix = `https://github.com/${BUILDS}/releases/download/${release.tag_name}/`;
   if (!zip.browser_download_url.startsWith(prefix)) throw new Error(`Unexpected link: ${zip.browser_download_url}`);
   const sum = checksum(await (await get(sums.browser_download_url)).text(), zip.name);
-  return { name: 'ffmpeg-windows-x86_64', url: zip.browser_download_url, sum };
+  return { name: `ffmpeg-windows-${arch}`, url: zip.browser_download_url, sum };
 }
 
 const pins = [];
-for (const [os, arch] of [['macos', 'arm64'], ['macos', 'x86_64'], ['linux', 'x86_64']]) {
+for (const [os, arch] of [['macos', 'arm64'], ['macos', 'x86_64'], ['linux', 'x86_64'], ['linux', 'arm64']]) {
   for (const tool of ['ffmpeg', 'ffprobe']) pins.push(await riedl(os, arch, tool));
 }
-pins.push(await windows());
+// Both Windows builds from the same dated release.
+const releases = await (await get(`https://api.github.com/repos/${BUILDS}/releases?per_page=20`)).json();
+for (const arch of ['x86_64', 'arm64']) pins.push(await windows(releases, arch));
 
 const width = Math.max(...pins.map((p) => p.name.length));
 writeFileSync(

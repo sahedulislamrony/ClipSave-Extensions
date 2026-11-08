@@ -6,6 +6,16 @@ All notable changes to ClipSave for browsers are documented here. The format fol
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-11-08
+
+### Added
+- **The helper runs on Arm Linux and Windows on Arm.** Releases now include `clipsave-helper-linux-arm64.tar.gz`
+  and `clipsave-helper-windows-arm64.zip`, built on Arm machines, and the install commands pick them by
+  themselves. On Windows on Arm, QuickJS is its x86 build, run through Windows' emulation, since QuickJS-ng
+  has no Arm build for Windows. An existing x64 install on an Arm PC moves to the Arm helper with its next
+  update.
+- Every release checks that each packaged helper and its tools start on the machine it was built on.
+
 ## [1.3.1] - 2026-11-08
 
 ### Security
