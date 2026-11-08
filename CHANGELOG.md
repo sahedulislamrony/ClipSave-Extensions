@@ -6,6 +6,8 @@ All notable changes to ClipSave for browsers are documented here. The format fol
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-08
+
 ### Security
 - **A video's title can no longer put a saved file outside the ClipSave folder.** yt-dlp expands `$VAR`,
   `${VAR}` and a leading `~` in file names, so a title like `${TMPDIR}x` could land somewhere else. Those
