@@ -776,14 +776,18 @@ async function start() {
 
   // Asking the helper about itself runs yt-dlp once, so reading the page doesn't wait for it: both go at
   // once. A missing helper fails the page read too, which then shows the install step.
-  void send<{ helper: HelperInfo }>({ type: 'status' }).then((status) => {
+  const reading = readCurrentTab();
+  void send<{ helper: HelperInfo }>({ type: 'status' }).then(async (status) => {
     if (status.ok) return void showUpdateNotice(status.helper);
+    // A missing helper answers at once, often before the tab is read. Waiting for the read keeps its
+    // "Open a page" from replacing the install step a moment later.
+    await reading;
     // Nothing was read that would show the problem.
     if (shown.kind !== 'empty') return;
     renderSave({ kind: 'failed', failure: status });
     if (status.code === 'helper_missing') void waitForHelper();
   });
-  await readCurrentTab();
+  await reading;
 }
 
 void start();
