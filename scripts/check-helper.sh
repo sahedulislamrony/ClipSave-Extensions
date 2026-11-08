@@ -13,10 +13,17 @@ dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 case $archive in
   *.zip)
-    if command -v unzip >/dev/null 2>&1; then
-      unzip -q "$archive" -d "$dir"
+    if command -v cygpath >/dev/null 2>&1; then
+      # Windows (Git Bash): unpacked the way install.ps1 does, with Windows' own tar, else Expand-Archive.
+      # Git Bash's unzip warns about the backslashes Compress-Archive writes into the zip, and exits 1.
+      wintar="$(cygpath -u "${SYSTEMROOT:-C:/Windows}")/System32/tar.exe"
+      if [ -x "$wintar" ]; then
+        "$wintar" -xf "$(cygpath -w "$archive")" -C "$(cygpath -w "$dir")"
+      else
+        powershell -NoProfile -Command "Expand-Archive -LiteralPath '$(cygpath -w "$archive")' -DestinationPath '$(cygpath -w "$dir")'"
+      fi
     else
-      powershell -NoProfile -Command "Expand-Archive -LiteralPath '$(cygpath -w "$archive")' -DestinationPath '$(cygpath -w "$dir")'"
+      unzip -q "$archive" -d "$dir"
     fi
     ;;
   *) tar -xzf "$archive" -C "$dir" ;;
