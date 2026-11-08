@@ -67,12 +67,14 @@ export async function latestRelease(fetcher: typeof fetch = fetch): Promise<Rele
   };
   const version = (body.tag_name ?? '').replace(/^v/, '');
   if (!PATTERN.test(version)) throw new Error("GitHub's answer had no version in it.");
+  // Settings links to these, so only links into this repository's own releases are kept.
+  const ours = (url: string | undefined, prefix: string): url is string => !!url && url.startsWith(prefix);
   return {
     version,
-    url: body.html_url ?? `${REPO_URL}/releases/latest`,
+    url: ours(body.html_url, `${REPO_URL}/releases/`) ? body.html_url : `${REPO_URL}/releases/latest`,
     publishedAt: body.published_at ?? null,
     assets: (body.assets ?? [])
-      .filter((asset) => asset.name && asset.browser_download_url)
+      .filter((asset) => asset.name && ours(asset.browser_download_url, `${REPO_URL}/releases/download/`))
       .map((asset) => ({ name: asset.name!, url: asset.browser_download_url! })),
   };
 }

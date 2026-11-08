@@ -21,16 +21,15 @@ struct Stored {
     audio_dir: Option<PathBuf>,
 }
 
-fn file() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join("ClipSave/settings.json")
+/// Never the shared temp folder, where another account could leave a settings file of its own.
+fn file() -> Option<PathBuf> {
+    dirs::config_dir().map(|dir| dir.join("ClipSave/settings.json"))
 }
 
 /// A missing or unreadable file means every folder is the default.
 fn load() -> Stored {
-    fs::read(file())
-        .ok()
+    file()
+        .and_then(|file| fs::read(file).ok())
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or_default()
 }
@@ -89,7 +88,7 @@ fn usable(path: &Path) -> Result<PathBuf, String> {
 }
 
 fn save(stored: &Stored) -> Result<(), String> {
-    let file = file();
+    let file = file().ok_or("There's no settings folder to save in.")?;
     if let Some(parent) = file.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Could not save settings: {e}"))?;
     }

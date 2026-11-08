@@ -1,0 +1,26 @@
+# Pull requests into dev, kept to what matters:
+# - github-actions: the workflows pin each action to a commit, so a moved tag can't change what runs;
+#   this keeps those pins current.
+# - npm, cargo: security updates only (open-pull-requests-limit 0 turns routine version bumps off). They
+#   also need "Dependabot security updates" on in Settings → Code security.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+
+  - package-ecosystem: cargo
+    directory: /helper
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0

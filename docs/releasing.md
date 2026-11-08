@@ -106,7 +106,7 @@ Releases on GitHub are automatic. Store listings are done by hand.
      screenshots, the privacy policy).
   2. **Then every release does it:** create API keys at
      [addons.mozilla.org/developers/addon/api/key](https://addons.mozilla.org/developers/addon/api/key/) and
-     add them as the `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` repository secrets. The Release workflow submits
+     add them as the `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` secrets of the `release` environment (below). The Release workflow submits
      each new version to the listing with its source code. It doesn't wait for the review.
   - The version must be new each time; AMO refuses one it has seen.
   - To sign without a public listing instead (a `.xpi` attached to each GitHub release, which doesn't update
@@ -127,17 +127,27 @@ The Firefox listing needs a privacy policy link: use [PRIVACY.md](../PRIVACY.md)
    ```bash
    gh api repos/OWNER/REPO/rulesets --method POST --input .github/rulesets/dev.json
    gh api repos/OWNER/REPO/rulesets --method POST --input .github/rulesets/main.json
+   gh api repos/OWNER/REPO/rulesets --method POST --input .github/rulesets/tags.json
    # update an existing one: gh api repos/OWNER/REPO/rulesets/ID --method PUT --input .github/rulesets/main.json
    ```
 
    - `main`: no bypass; pull request required; signed commits; the checks above; code scanning; merge commits only.
    - `dev`: pull request required for everyone except repository **admins** (the maintainer), who may push
      directly; the checks above (except Release readiness) and code scanning also apply to pull requests.
-3. **Merge settings** (Settings → General → Pull Requests): allow merge commits and squash merging, and enable
-   "Automatically delete head branches".
+   - `v*` tags: once created (by the Release workflow), they can't be moved or deleted, by anyone.
+3. **Merge settings** (Settings → General → Pull Requests): allow merge commits and squash merging, and leave
+   "Automatically delete head branches" **off**: `dev` is merged into `main` for every release and must stay.
 4. **Private vulnerability reporting** (Settings → Code security): on, so [SECURITY.md](../SECURITY.md) works.
-5. **Optional secrets:** `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` for a signed Firefox add-on.
-6. Dependency updates are done by hand; Dependabot version updates are off (no `.github/dependabot.yml`).
+5. **The `release` environment** (Settings → Environments → New environment → `release`): deployment branches
+   limited to `main`, and holding the optional `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` secrets for a signed
+   Firefox add-on. Only the Publish job uses it. No required reviewers are needed.
+6. **Immutable releases** (Settings → General → Releases): on, so a published release's files can't be swapped.
+7. **Dependency updates:** Dependabot (`.github/dependabot.yml`) keeps the pinned actions current and opens
+   security updates for the npm and Cargo dependencies, all as pull requests into `dev`. CI also runs
+   `npm audit` and `cargo audit` on every pull request.
+8. **ffmpeg** is pinned in `helper/engine.lock`. To ship newer builds, run `node scripts/pin-engines.mjs` and
+   commit the change. The Windows builds come from dated releases that FFmpeg-Builds deletes after a few weeks;
+   when the pinned one is gone, CI fails with a message saying to run the script again.
 
 The **Chrome development key** (`keys/chrome.pem`, not in git) only matters if you ever need to sign a `.crx`
 yourself. Builds use the public key in `wxt.config.ts`. Back the private key up anyway.

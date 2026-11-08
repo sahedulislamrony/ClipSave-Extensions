@@ -388,7 +388,7 @@ run() {
 }
 
 # Downloads $1 to $2, showing how far it's got.
-fetch() { curl -fSL --retry 2 -s -D "$2.headers" -o "$2" "$1"; }
+fetch() { curl -fSL --proto-redir =https --retry 2 -s -D "$2.headers" -o "$2" "$1"; }
 
 if command -v sha256sum >/dev/null 2>&1; then
   sha256() { sha256sum "$1" | awk '{ print $1 }'; }
@@ -505,7 +505,7 @@ fi
 update_ytdlp() {
   vendor="$dest/helper/vendor"
   [ -d "$vendor" ] || { why="The ClipSave Helper isn't installed here yet."; return 1; }
-  run "Getting yt-dlp's checksums" "" curl -fsSL --retry 2 -o "$work/SHA2-256SUMS" "$YTDLP_BASE/SHA2-256SUMS" ||
+  run "Getting yt-dlp's checksums" "" curl -fsSL --proto-redir =https --retry 2 -o "$work/SHA2-256SUMS" "$YTDLP_BASE/SHA2-256SUMS" ||
     { why="Couldn't download yt-dlp's checksums."; return 1; }
   run "Downloading the newest yt-dlp" "$work/$ytdlp" fetch "$YTDLP_BASE/$ytdlp" "$work/$ytdlp" ||
     { why="Couldn't download yt-dlp."; return 1; }
@@ -577,7 +577,7 @@ fi
 run "Downloading the ClipSave Helper" "$work/$asset" fetch "$BASE/$asset" "$work/$asset" ||
   fail "Couldn't download the helper. Check your internet connection and try again."
 size=$(wc -c <"$work/$asset" | awk '{ printf "%.0f MB", $1 / 1048576 }')
-run "Checking it" "" curl -fsSL --retry 2 -o "$work/SHA256SUMS.txt" "$BASE/SHA256SUMS.txt" ||
+run "Checking it" "" curl -fsSL --proto-redir =https --retry 2 -o "$work/SHA256SUMS.txt" "$BASE/SHA256SUMS.txt" ||
   fail "Couldn't download the checksums."
 verified "$work/$asset" "$work/SHA256SUMS.txt" "$asset" ||
   fail "The download doesn't match its published checksum, so nothing was installed."
