@@ -153,6 +153,11 @@ case "$(uname -s)-$(uname -m)" in
     ytdlp=yt-dlp_linux
     dest="${XDG_DATA_HOME:-$HOME/.local/share}/clipsave"
     ;;
+  Linux-aarch64 | Linux-arm64)
+    asset=clipsave-helper-linux-arm64.tar.gz
+    ytdlp=yt-dlp_linux_aarch64
+    dest="${XDG_DATA_HOME:-$HOME/.local/share}/clipsave"
+    ;;
   *)
     fail "The ClipSave Helper doesn't run on $(uname -s) $(uname -m) yet."
     ;;

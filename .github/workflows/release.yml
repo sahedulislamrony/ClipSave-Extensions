@@ -2,7 +2,7 @@ name: Release
 
 # release.json decides releases. When a merge into main changes it, and the version it states is newer than
 # the latest release, this runs every check again and, if they all pass, publishes a GitHub Release with the
-# extension zips, the helper for macOS, Linux and Windows, and the installers. Merges that don't change release.json don't start it, and a
+# extension zips, the helper for macOS, Linux and Windows (x86_64 and arm64 each), and the installers. Merges that don't change release.json don't start it, and a
 # version that isn't newer publishes nothing. After a failed run, start it again from
 # Actions → Release → Run workflow on main; the same rules apply.
 #
@@ -94,11 +94,17 @@ jobs:
           path: dist/clipsave-helper-macos-*.tar.gz
 
   helper-linux:
-    name: Helper for Linux
+    name: Helper for Linux (${{ matrix.arch }})
     needs: [plan, checks]
-    # The oldest supported runner, so the binary runs on older Linux systems too.
-    runs-on: ubuntu-22.04
+    # Each on its own kind of processor, so the check below runs what was built. The oldest supported
+    # runners, so the binary runs on older Linux systems too.
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    strategy:
+      matrix:
+        include:
+          - { arch: x86_64, os: ubuntu-22.04 }
+          - { arch: arm64, os: ubuntu-22.04-arm }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -109,19 +115,27 @@ jobs:
       - name: Build and package with yt-dlp
         run: |
           cargo build --release --locked --manifest-path helper/Cargo.toml
-          sh helper/fetch-engine.sh
-          sh scripts/package-helper.sh linux-x86_64 helper/target/release/clipsave-helper
+          sh helper/fetch-engine.sh ${{ matrix.arch }}
+          sh scripts/package-helper.sh linux-${{ matrix.arch }} helper/target/release/clipsave-helper
+
+      - name: Check the helper and its tools start
+        run: sh scripts/check-helper.sh dist/clipsave-helper-linux-${{ matrix.arch }}.tar.gz
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: helper-linux
-          path: dist/clipsave-helper-linux-x86_64.tar.gz
+          name: helper-linux-${{ matrix.arch }}
+          path: dist/clipsave-helper-linux-${{ matrix.arch }}.tar.gz
 
   helper-windows:
-    name: Helper for Windows
+    name: Helper for Windows (${{ matrix.arch }})
     needs: [plan, checks]
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      matrix:
+        include:
+          - { arch: x86_64, os: windows-latest, target: x86_64-pc-windows-msvc }
+          - { arch: arm64, os: windows-11-arm, target: aarch64-pc-windows-msvc }
     defaults:
       run:
         shell: bash
@@ -131,17 +145,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: stable
+          targets: ${{ matrix.target }}
 
+      # The target and the architecture are named outright: Git Bash's uname may not report an Arm machine.
       - name: Build and package with its tools
         run: |
-          cargo build --release --locked --manifest-path helper/Cargo.toml
-          sh helper/fetch-engine.sh
-          sh scripts/package-helper.sh windows-x86_64 helper/target/release/clipsave-helper.exe
+          cargo build --release --locked --manifest-path helper/Cargo.toml --target ${{ matrix.target }}
+          sh helper/fetch-engine.sh ${{ matrix.arch }}
+          sh scripts/package-helper.sh windows-${{ matrix.arch }} helper/target/${{ matrix.target }}/release/clipsave-helper.exe
+
+      - name: Check the helper and its tools start
+        run: sh scripts/check-helper.sh dist/clipsave-helper-windows-${{ matrix.arch }}.zip
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: helper-windows
-          path: dist/clipsave-helper-windows-x86_64.zip
+          name: helper-windows-${{ matrix.arch }}
+          path: dist/clipsave-helper-windows-${{ matrix.arch }}.zip
 
   publish:
     name: Publish
