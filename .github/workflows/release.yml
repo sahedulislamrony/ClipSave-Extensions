@@ -101,6 +101,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
+      # One processor's failure shouldn't cancel the other's build, so both results show.
+      fail-fast: false
       matrix:
         include:
           - { arch: x86_64, os: ubuntu-22.04 }
@@ -132,6 +134,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
+      # One processor's failure shouldn't cancel the other's build, so both results show.
+      fail-fast: false
       matrix:
         include:
           - { arch: x86_64, os: windows-latest, target: x86_64-pc-windows-msvc }
