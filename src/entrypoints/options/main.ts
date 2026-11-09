@@ -124,13 +124,21 @@ function renderUpdates() {
   const { helper, updates } = state;
   const step = installStep(state.platform);
   const checked = updates.checkedAt !== null;
+  // A check that failed before any succeeded knows no newest version, so it can't say "Up to date".
+  const known = updates.release !== null;
   const found = available(updates, { extension: EXTENSION_VERSION, helper: helper?.version, ytDlp: helper?.ytDlp });
   const canUpdate = hasFeature('update');
   // A full update replaces the extension too, where it's loaded from the installer's folder.
   const reachesExtension = !FIREFOX && state.managed;
 
   // Extension
-  const extensionStatus = !checked ? badge('Not checked', 'muted') : found.extension ? badge(`${found.version} available`, 'new') : badge('Up to date', 'ok');
+  const extensionStatus = !checked
+    ? badge('Not checked', 'muted')
+    : !known
+      ? badge('Couldn’t check', 'muted')
+      : found.extension
+        ? badge(`${found.version} available`, 'new')
+        : badge('Up to date', 'ok');
   let extensionMore: HTMLElement | null = null;
   if (found.extension && FIREFOX) {
     extensionMore = el(
@@ -176,6 +184,7 @@ function renderUpdates() {
   } else if (!checked) helperStatus = badge('Not checked', 'muted');
   else if (found.helper) helperStatus = badge(`${found.version} available`, 'new');
   else if (found.ytDlp) helperStatus = badge(`yt-dlp ${updates.ytDlp} available`, 'new');
+  else if (!known) helperStatus = badge('Couldn’t check', 'muted');
   else helperStatus = badge('Up to date', 'ok');
 
   // The one button: the whole of ClipSave when either part is behind (and the update can reach it),

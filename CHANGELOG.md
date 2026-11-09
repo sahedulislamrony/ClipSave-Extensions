@@ -6,6 +6,13 @@ All notable changes to ClipSave for browsers are documented here. The format fol
 
 ## [Unreleased]
 
+### Fixed
+- **Settings no longer says "Up to date" when the update check failed.** If GitHub refused the very first
+  check, both parts showed "Up to date" even when a newer version was out. They now say "Couldn't check".
+- When GitHub's hourly limit for your network is used up (60 checks an hour, shared by every app on that
+  network), Settings says how many minutes until it lifts instead of "an hour". Other refusals are no longer
+  mistaken for the limit.
+
 ## [1.3.2] - 2026-11-08
 
 ### Added
