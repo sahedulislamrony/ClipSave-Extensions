@@ -48,6 +48,21 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+/**
+ * GitHub answers 60 unsigned requests an hour per internet address, shared by everything on that address
+ * (other apps, everyone on the same network). When a refusal is that limit, says so, with when it lifts.
+ */
+export function limitMessage(response: Response, now = Date.now()): string | null {
+  const remaining = response.headers.get('x-ratelimit-remaining');
+  const retryAfter = Number(response.headers.get('retry-after'));
+  if (response.status !== 429 && !(response.status === 403 && (remaining === '0' || retryAfter > 0))) return null;
+  const reset = Number(response.headers.get('x-ratelimit-reset')) * 1000;
+  const wait = retryAfter > 0 ? retryAfter * 1000 : reset - now;
+  const minutes = wait > 0 ? Math.ceil(wait / 60_000) : null;
+  const when = minutes === null || minutes > 60 ? 'in an hour' : minutes === 1 ? 'in a minute' : `in ${minutes} minutes`;
+  return `GitHub is limiting checks from your network right now. Try again ${when}.`;
+}
+
 export async function latestRelease(fetcher: typeof fetch = fetch): Promise<Release> {
   let response: Response;
   try {
@@ -55,9 +70,8 @@ export async function latestRelease(fetcher: typeof fetch = fetch): Promise<Rele
   } catch {
     throw new Error("Couldn't reach GitHub. Check your internet connection and try again.");
   }
-  if (response.status === 403 || response.status === 429) {
-    throw new Error('GitHub is limiting checks right now. Try again in an hour.');
-  }
+  const limited = limitMessage(response);
+  if (limited) throw new Error(limited);
   if (!response.ok) throw new Error(`GitHub answered ${response.status}. Try again later.`);
   const body = (await response.json()) as {
     tag_name?: string;

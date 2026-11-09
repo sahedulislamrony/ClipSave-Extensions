@@ -8,6 +8,7 @@ import {
   extensionAsset,
   isDue,
   latestRelease,
+  limitMessage,
   NO_UPDATE_STATE,
   REPO_URL,
   type Release,
@@ -28,8 +29,8 @@ describe('compareVersions', () => {
   });
 });
 
-function reply(status: number, body: unknown) {
-  return vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(body), { status }));
+function reply(status: number, body: unknown, headers: Record<string, string> = {}) {
+  return vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(body), { status, headers }));
 }
 
 describe('latestRelease', () => {
@@ -64,9 +65,37 @@ describe('latestRelease', () => {
   });
 
   it('explains failures in plain words', async () => {
-    await expect(latestRelease(reply(403, {}))).rejects.toThrow(/limiting/);
+    await expect(latestRelease(reply(403, {}, { 'x-ratelimit-remaining': '0' }))).rejects.toThrow(/limiting/);
+    await expect(latestRelease(reply(403, {}))).rejects.toThrow('GitHub answered 403');
     await expect(latestRelease(reply(200, { tag_name: 'nightly' }))).rejects.toThrow(/no version/);
     await expect(latestRelease(vi.fn<typeof fetch>().mockRejectedValue(new TypeError('offline')))).rejects.toThrow(/reach GitHub/);
+  });
+});
+
+describe('limitMessage', () => {
+  const now = Date.UTC(2026, 10, 9, 10, 0, 0);
+  const limited = (headers: Record<string, string>, status = 403) => new Response(null, { status, headers });
+
+  it('says when GitHub lifts the limit', () => {
+    const reset = String(now / 1000 + 16 * 60 - 10);
+    expect(limitMessage(limited({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': reset }), now)).toBe(
+      'GitHub is limiting checks from your network right now. Try again in 16 minutes.',
+    );
+    expect(limitMessage(limited({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(now / 1000 + 20) }), now)).toMatch(
+      /in a minute\.$/,
+    );
+  });
+
+  it('follows Retry-After, and falls back to an hour without a time', () => {
+    expect(limitMessage(limited({ 'retry-after': '120' }), now)).toMatch(/in 2 minutes\.$/);
+    expect(limitMessage(limited({}, 429), now)).toMatch(/in an hour\.$/);
+    expect(limitMessage(limited({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '0' }), now)).toMatch(/in an hour\.$/);
+  });
+
+  it('leaves other refusals alone', () => {
+    expect(limitMessage(limited({}), now)).toBeNull();
+    expect(limitMessage(limited({ 'x-ratelimit-remaining': '12' }), now)).toBeNull();
+    expect(limitMessage(new Response('{}', { status: 200 }), now)).toBeNull();
   });
 });
 
